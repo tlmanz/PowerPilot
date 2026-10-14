@@ -1,0 +1,23 @@
+PowerPilot for Linux
+====================
+
+1. Let your user talk to the UPS (once; needs sudo):
+
+     sudo cp 99-powerpilot.rules /etc/udev/rules.d/
+     sudo udevadm control --reload && sudo udevadm trigger
+
+   Then unplug and replug the UPS's USB cable.
+
+2. Put the program somewhere permanent and start the background service:
+
+     mkdir -p ~/.local/bin && cp powerpilot ~/.local/bin/
+     ~/.local/bin/powerpilot install
+
+   This adds a systemd user service (starts at login) and a "PowerPilot"
+   entry in your app menu.
+
+3. Open the dashboard from the app menu, or run "powerpilot", or browse to
+   http://127.0.0.1:8484
+
+Uninstall: powerpilot uninstall
+Logs:      journalctl --user -u powerpilot

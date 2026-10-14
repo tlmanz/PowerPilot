@@ -1,0 +1,15 @@
+# Build output
+/bin/
+/dist/
+
+# Third-party software and design mockups: not ours to publish
+*.dmg
+*.dmg.zip
+/desktop.png
+/dad9ec4b-*.png
+/4a8aa427-*.png
+/eef8dd0c-*.png
+
+# Editor and OS files
+.vscode/
+.DS_Store
