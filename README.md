@@ -1,4 +1,22 @@
-# PowerPilot
+<p align="center">
+  <img src="internal/web/static/assets/logo.png" alt="PowerPilot logo" width="120">
+</p>
+
+<h1 align="center">PowerPilot</h1>
+
+<p align="center">
+  Desktop dashboard and background service for USB UPSes, on macOS, Windows and Linux.
+</p>
+
+<p align="center">
+  <a href="https://github.com/tlmanz/PowerPilot/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/tlmanz/PowerPilot?sort=semver"></a>
+  <a href="https://github.com/tlmanz/PowerPilot/actions/workflows/release.yml"><img alt="Release workflow" src="https://github.com/tlmanz/PowerPilot/actions/workflows/release.yml/badge.svg"></a>
+  <a href="go.mod"><img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/tlmanz/PowerPilot"></a>
+  <img alt="Platforms: macOS, Windows, Linux" src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-blue">
+  <a href="https://github.com/tlmanz/PowerPilot/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/tlmanz/PowerPilot/total"></a>
+</p>
+
+![PowerPilot dashboard monitoring a Prolink PRO2000SFCU on mains power](docs/screenshots/dashboard.png)
 
 A desktop dashboard and background service for USB UPSes that speak the Megatec/Voltronic protocol (USB `0665:5161`, e.g. the **Prolink PRO2000SFCU**). It runs on macOS, Windows and Linux, and is written in Go (standard library only, plus cgo on macOS for IOKit and WebKit).
 
@@ -9,6 +27,28 @@ A desktop dashboard and background service for USB UPSes that speak the Megatec/
 - **App:** opens the dashboard and starts the service on first launch.
   - **macOS:** `PowerPilot.app`, a native window.
   - **Windows and Linux:** an Edge/Chrome/Chromium app window, or the default browser.
+
+## During a power outage
+
+![Dashboard during a power outage: input failed, running on battery, alarm active](docs/screenshots/on-battery.png)
+
+During an outage:
+- The UPS display and the Power Flow switch to battery.
+- The alarm banner appears.
+- **Mute** becomes available.
+- Events are logged and a notification is sent.
+
+This view uses the built-in mock data: open `http://127.0.0.1:8484/?source=mock&scenario=battery`. Other scenarios are `bypass` and `fault`.
+
+## Requirements
+
+| | Supported |
+|---|---|
+| macOS | 12 Monterey or newer, Apple Silicon or Intel |
+| Windows | 10 or 11, x64 or ARM64. The app window uses Edge or Chrome. |
+| Linux | x64 or ARM64 with systemd. The app window uses Chrome or Chromium, otherwise the default browser. |
+| UPS | USB ID `0665:5161`, Megatec/Voltronic "PMV" protocol (e.g. Prolink PRO2000SFCU) |
+| Building from source | Go 1.26 or newer ([`go.mod`](go.mod)). macOS builds also need the Xcode command-line tools (for cgo). |
 
 ## Install a release
 

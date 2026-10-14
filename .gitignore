@@ -13,3 +13,7 @@
 # Editor and OS files
 .vscode/
 .DS_Store
+
+# Downloaded or locally built release archives
+/PowerPilot_*.zip
+/PowerPilot_*.tar.gz
