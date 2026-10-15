@@ -4,6 +4,7 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -168,5 +169,35 @@ func TestSelfTestResult(t *testing.T) {
 	m.update(onLine)
 	if lt := m.State().LastTest; lt.Result != "failed" {
 		t.Fatalf("last test: %+v", lt)
+	}
+}
+
+type fakeRecorder struct {
+	events []Event
+	modes  []string
+}
+
+func (r *fakeRecorder) Event(e Event)                { r.events = append(r.events, e) }
+func (r *fakeRecorder) Sample(_ Sample, mode string) { r.modes = append(r.modes, mode) }
+
+func TestRecorderGetsEventsAndSamples(t *testing.T) {
+	m, _ := newTestMonitor(t, settings.Default())
+	rec := &fakeRecorder{}
+	m.actions.Log = rec
+	m.Restore([]Event{{Kind: KindInfo, Level: "info", Message: "from yesterday"}})
+	m.update(onLine)
+	m.update(onBattery)
+	if got := strings.Join(rec.modes, ","); got != "line,battery" {
+		t.Errorf("sample modes = %s", got)
+	}
+	var logged []string
+	for _, e := range rec.events {
+		logged = append(logged, e.Message)
+	}
+	if !strings.Contains(strings.Join(logged, "|"), "Utility power lost") || slices.Contains(logged, "from yesterday") {
+		t.Errorf("logged events: %q", logged)
+	}
+	if first := m.State().Events[0].Message; first != "from yesterday" {
+		t.Errorf("restored events should come first, got %q", first)
 	}
 }

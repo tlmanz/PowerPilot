@@ -25,7 +25,7 @@ export function createMockSource({ scenario = 'cycle', interval = 2000 } = {}) {
     input: 231, output: 230, load: 42, battery: 78, temp: 32, fan: 1200, pf: 0.84,
     beeper: true, muted: false, testLeft: 0, shutdownIn: null, restoreIn: null, outletsOff: false,
     mode: null, alarmLevel: 'none', lowNotified: false, lastTest: null,
-    settings: { low_battery_percent: 20, notify: true, shutdown_mac: false, shutdown_after_minutes: 5, battery_ah: BATTERY_AH },
+    settings: { low_battery_percent: 20, notify: true, shutdown_mac: false, shutdown_after_minutes: 5, battery_ah: BATTERY_AH, log_retention_days: 90 },
   };
 
   function event(kind, level, message) {

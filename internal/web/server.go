@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"mime"
 	"net"
@@ -14,6 +15,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/tlmanz/PowerPilot/internal/logbook"
 	"github.com/tlmanz/PowerPilot/internal/monitor"
 	"github.com/tlmanz/PowerPilot/internal/settings"
 	"github.com/tlmanz/PowerPilot/internal/update"
@@ -36,21 +38,26 @@ type Updater interface {
 	Restart() error
 }
 
+// Options connects the dashboard API to the rest of the service.
+type Options struct {
+	WindowFile string // where the dashboard window reports its size
+	Updater    Updater
+	Logs       *logbook.Book
+}
+
 type server struct {
-	mon        *monitor.Monitor
-	hosts      map[string]bool
-	windowFile string
-	updater    Updater
+	Options
+	mon   *monitor.Monitor
+	hosts map[string]bool
 }
 
 // Handler returns the dashboard for a server listening on listenAddr.
-// windowFile is where the dashboard window reports its size.
-func Handler(mon *monitor.Monitor, listenAddr, windowFile string, updater Updater) (http.Handler, error) {
+func Handler(mon *monitor.Monitor, listenAddr string, opt Options) (http.Handler, error) {
 	_, port, err := net.SplitHostPort(listenAddr)
 	if err != nil {
 		return nil, err
 	}
-	s := &server{mon: mon, windowFile: windowFile, updater: updater, hosts: map[string]bool{
+	s := &server{Options: opt, mon: mon, hosts: map[string]bool{
 		listenAddr:          true,
 		"localhost:" + port: true,
 		"127.0.0.1:" + port: true,
@@ -70,6 +77,10 @@ func Handler(mon *monitor.Monitor, listenAddr, windowFile string, updater Update
 	mux.HandleFunc("PUT /api/window", s.putWindow)
 	mux.HandleFunc("GET /api/update", s.checkUpdate)
 	mux.HandleFunc("POST /api/update", s.applyUpdate)
+	mux.HandleFunc("GET /api/logs", s.logDays)
+	mux.HandleFunc("GET /api/logs/events", s.logEvents)
+	mux.HandleFunc("GET /api/logs/readings", s.logReadings)
+	mux.HandleFunc("GET /api/logs/export", s.logExport)
 	return s.guard(mux), nil
 }
 
@@ -177,7 +188,62 @@ func (s *server) putSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	s.Logs.Prune() // the retention period may have shrunk
 	writeJSON(w, http.StatusOK, v)
+}
+
+func (s *server) logDays(w http.ResponseWriter, r *http.Request) {
+	days, size := s.Logs.Days()
+	writeJSON(w, http.StatusOK, map[string]any{"days": days, "bytes": size})
+}
+
+func (s *server) logEvents(w http.ResponseWriter, r *http.Request) {
+	date := r.URL.Query().Get("date")
+	if !logbook.IsDate(date) {
+		writeError(w, http.StatusBadRequest, errors.New("date must look like 2026-10-15"))
+		return
+	}
+	evs, err := s.Logs.Events(date)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, evs)
+}
+
+func (s *server) logReadings(w http.ResponseWriter, r *http.Request) {
+	date := r.URL.Query().Get("date")
+	if !logbook.IsDate(date) {
+		writeError(w, http.StatusBadRequest, errors.New("date must look like 2026-10-15"))
+		return
+	}
+	rs, err := s.Logs.Readings(date)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rs)
+}
+
+// logExport downloads one kind of log for a range of dates as CSV.
+func (s *server) logExport(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	kind, from, to := q.Get("kind"), q.Get("from"), q.Get("to")
+	export := map[string]func(io.Writer, string, string) error{
+		"events":   s.Logs.ExportEvents,
+		"readings": s.Logs.ExportReadings,
+	}[kind]
+	switch {
+	case export == nil:
+		writeError(w, http.StatusBadRequest, errors.New("kind must be events or readings"))
+		return
+	case !logbook.IsDate(from) || !logbook.IsDate(to) || from > to:
+		writeError(w, http.StatusBadRequest, errors.New("from and to must be dates like 2026-10-15, from first"))
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="PowerPilot-%s-%s-to-%s.csv"`, kind, from, to))
+	export(w, from, to) // too late for an error status once rows are out
 }
 
 // putWindow remembers the size of PowerPilot's own window (Linux, Windows) so
@@ -191,7 +257,7 @@ func (s *server) putWindow(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if err := settings.SaveWindow(s.windowFile, v); err != nil {
+	if err := settings.SaveWindow(s.WindowFile, v); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -199,7 +265,7 @@ func (s *server) putWindow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) checkUpdate(w http.ResponseWriter, r *http.Request) {
-	st, err := s.updater.Check(r.Context())
+	st, err := s.Updater.Check(r.Context())
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
@@ -214,7 +280,7 @@ func (s *server) applyUpdate(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	v, err := s.updater.Apply(r.Context())
+	v, err := s.Updater.Apply(r.Context())
 	switch {
 	case errors.Is(err, update.ErrBlocked):
 		writeError(w, http.StatusConflict, err)
@@ -228,7 +294,7 @@ func (s *server) applyUpdate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": v})
 	go func() {
 		time.Sleep(500 * time.Millisecond) // let the reply reach the dashboard
-		if err := s.updater.Restart(); err != nil {
+		if err := s.Updater.Restart(); err != nil {
 			s.mon.Note("alert", "Could not restart after the update: "+err.Error())
 		}
 	}()

@@ -3,7 +3,7 @@
 
 #include "window_darwin.h"
 
-@interface UPSAppDelegate : NSObject <NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate>
+@interface UPSAppDelegate : NSObject <NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate>
 @property(strong) NSWindow *window;
 @property(strong) WKWebView *web;
 @property(strong) NSURL *url;
@@ -56,8 +56,44 @@
 	return nil;
 }
 
+// Log exports are downloads: links with a download attribute, or replies sent
+// as attachments. WKWebView drops them unless told to download.
+- (void)webView:(WKWebView *)web decidePolicyForNavigationAction:(WKNavigationAction *)action
+	decisionHandler:(void (^)(WKNavigationActionPolicy))decide {
+	decide(action.shouldPerformDownload ? WKNavigationActionPolicyDownload : WKNavigationActionPolicyAllow);
+}
+
+- (void)webView:(WKWebView *)web decidePolicyForNavigationResponse:(WKNavigationResponse *)response
+	decisionHandler:(void (^)(WKNavigationResponsePolicy))decide {
+	NSHTTPURLResponse *http = [response.response isKindOfClass:[NSHTTPURLResponse class]] ? (NSHTTPURLResponse *)response.response : nil;
+	BOOL attachment = [[http valueForHTTPHeaderField:@"Content-Disposition"] hasPrefix:@"attachment"];
+	decide(attachment || !response.canShowMIMEType ? WKNavigationResponsePolicyDownload : WKNavigationResponsePolicyAllow);
+}
+
+- (void)webView:(WKWebView *)web navigationAction:(WKNavigationAction *)action didBecomeDownload:(WKDownload *)download {
+	download.delegate = self;
+}
+
+- (void)webView:(WKWebView *)web navigationResponse:(WKNavigationResponse *)response didBecomeDownload:(WKDownload *)download {
+	download.delegate = self;
+}
+
+// Ask where to save, starting with the name the dashboard suggested.
+- (void)download:(WKDownload *)download decideDestinationUsingResponse:(NSURLResponse *)response
+	suggestedFilename:(NSString *)name completionHandler:(void (^)(NSURL *))done {
+	NSSavePanel *panel = [NSSavePanel savePanel];
+	panel.nameFieldStringValue = name;
+	[panel beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse result) {
+		done(result == NSModalResponseOK ? panel.URL : nil);
+	}];
+}
+
 // The service may still be starting (or not installed): explain, then keep retrying.
 - (void)webView:(WKWebView *)web didFailProvisionalNavigation:(WKNavigation *)nav withError:(NSError *)err {
+	// A navigation that turned into a download "fails" this way; the page is fine.
+	if ([err.domain isEqualToString:@"WebKitErrorDomain"] && err.code == 102) {
+		return;
+	}
 	NSString *html = @"<html><body style=\"font:15px -apple-system;display:flex;align-items:center;"
 		"justify-content:center;height:100vh;margin:0;color:#898781\"><div style=\"text-align:center\">"
 		"<h2 style=\"font-weight:600\">Starting PowerPilot…</h2>"

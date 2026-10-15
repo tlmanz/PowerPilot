@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/tlmanz/PowerPilot/internal/app"
+	"github.com/tlmanz/PowerPilot/internal/logbook"
 	"github.com/tlmanz/PowerPilot/internal/monitor"
 	"github.com/tlmanz/PowerPilot/internal/service"
 	"github.com/tlmanz/PowerPilot/internal/settings"
@@ -102,7 +103,14 @@ func serve(args []string) {
 		RatedW:     *ratedW,
 		AppVersion: version,
 	}
-	mon := monitor.New(*interval, device, store, monitor.Actions{Notify: system.Notify, ShutDown: system.ShutDown}, log)
+	logDir, err := service.LogDir()
+	if err != nil {
+		log.Error("no log directory", "err", err)
+		os.Exit(1)
+	}
+	book := logbook.Open(logDir, func() int { return store.Get().LogRetentionDays }, log)
+	mon := monitor.New(*interval, device, store, monitor.Actions{Notify: system.Notify, ShutDown: system.ShutDown, Log: book}, log)
+	mon.Restore(book.Recent(200))
 
 	exe, err := executable()
 	if err != nil {
@@ -118,7 +126,11 @@ func serve(args []string) {
 	}
 	go update.Cleanup(exe)
 
-	handler, err := web.Handler(mon, *addr, service.WindowFile(), update.New(version, exe))
+	handler, err := web.Handler(mon, *addr, web.Options{
+		WindowFile: service.WindowFile(),
+		Updater:    update.New(version, exe),
+		Logs:       book,
+	})
 	if err != nil {
 		log.Error("bad listen address", "err", err)
 		os.Exit(2)
@@ -134,10 +146,14 @@ func serve(args []string) {
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 
-	monDone := make(chan struct{})
+	monDone, bookDone := make(chan struct{}), make(chan struct{})
 	go func() {
 		mon.Run(ctx.Done())
 		close(monDone)
+	}()
+	go func() {
+		book.Run(ctx.Done())
+		close(bookDone)
 	}()
 	go func() {
 		<-ctx.Done()
@@ -155,6 +171,7 @@ func serve(args []string) {
 	err = srv.Serve(ln)
 	stop()
 	<-monDone
+	<-bookDone
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("server failed", "err", err)
 		os.Exit(1)

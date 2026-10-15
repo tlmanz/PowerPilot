@@ -8,6 +8,7 @@ import { updateAlarm, updateBattery, updateEnvironment, updateHeader, updateLoad
 import { addEvent, renderEvents, setEvents } from './ui/events.js';
 import { renderCharts, seedCharts, updateCharts } from './ui/charts.js';
 import { updateControls, wireControls } from './ui/controls.js';
+import { wireLogs } from './ui/logs.js';
 
 const params = new URLSearchParams(location.search);
 const source = params.get('source') === 'mock'
@@ -35,6 +36,7 @@ export function updateUPSState(next) {
 }
 
 wireControls(source, getState);
+wireLogs(source, getState);
 updateUPSState(state);
 source.start({
   state: updateUPSState,

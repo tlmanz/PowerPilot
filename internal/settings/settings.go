@@ -17,10 +17,12 @@ type Settings struct {
 	ShutdownAfterMinutes int  `json:"shutdown_after_minutes"`
 	// Amp-hours of each 12 V battery block; only used for the runtime estimate.
 	BatteryAh int `json:"battery_ah"`
+	// Days of event and reading logs kept on disk, today included.
+	LogRetentionDays int `json:"log_retention_days"`
 }
 
 func Default() Settings {
-	return Settings{LowBatteryPercent: 20, Notify: true, ShutdownAfterMinutes: 5, BatteryAh: 9}
+	return Settings{LowBatteryPercent: 20, Notify: true, ShutdownAfterMinutes: 5, BatteryAh: 9, LogRetentionDays: 90}
 }
 
 func (s Settings) Validate() error {
@@ -32,6 +34,9 @@ func (s Settings) Validate() error {
 	}
 	if s.BatteryAh < 1 || s.BatteryAh > 200 {
 		return errors.New("battery capacity must be between 1 and 200 Ah")
+	}
+	if s.LogRetentionDays < 1 || s.LogRetentionDays > 3650 {
+		return errors.New("logs must be kept for 1 to 3,650 days")
 	}
 	return nil
 }

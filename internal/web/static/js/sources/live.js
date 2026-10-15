@@ -6,7 +6,7 @@
 //   saveSettings(settings) -> Promise<settings>
 //   refresh() -> Promise
 // This one also has saveWindow({width, height}) for PowerPilot's own window,
-// and checkUpdate() / applyUpdate() for self-updates.
+// checkUpdate() / applyUpdate() for self-updates, and logs for the logs on disk.
 import { fromLive, fromLiveEvent, fromLiveSample } from '../state.js';
 
 async function api(method, path, body) {
@@ -80,5 +80,11 @@ export function createLiveSource() {
     saveWindow: (size) => api('PUT', '/api/window', size),
     checkUpdate: () => api('GET', '/api/update'),
     applyUpdate: () => api('POST', '/api/update', {}),
+    logs: {
+      days: () => api('GET', '/api/logs'),
+      events: (date) => api('GET', `/api/logs/events?date=${date}`),
+      readings: (date) => api('GET', `/api/logs/readings?date=${date}`),
+      exportURL: (kind, from, to) => `/api/logs/export?kind=${kind}&from=${from}&to=${to}`,
+    },
   };
 }

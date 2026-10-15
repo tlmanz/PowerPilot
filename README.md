@@ -40,6 +40,19 @@ During an outage:
 
 This view uses the built-in mock data: open `http://127.0.0.1:8484/?source=mock&scenario=battery`. Other scenarios are `bypass` and `fault`.
 
+## Logs
+
+The service keeps events and readings on disk, one file per day. Readings are averaged per minute, with the input voltage range and peak load.
+- **Browse:** open the calendar button or **View all**, then pick a day.
+- **Export:** download a range of days as CSV.
+- **Retention:** Settings sets how many days to keep (90 by default). Older days are deleted.
+
+| OS | Folder |
+|---|---|
+| Linux | `~/.local/state/PowerPilot/logs` |
+| macOS | `~/Library/Application Support/PowerPilot/logs` |
+| Windows | `%LocalAppData%\PowerPilot\logs` |
+
 ## Requirements
 
 | | Supported |

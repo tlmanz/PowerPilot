@@ -124,6 +124,15 @@ type Update struct {
 type Actions struct {
 	Notify   func(title, msg string) error
 	ShutDown func() error
+	// Log, when set, keeps events and readings beyond what's held in memory.
+	Log Recorder
+}
+
+// Recorder keeps events and readings on disk (package logbook). Its methods
+// are called with the monitor locked, so they must not block.
+type Recorder interface {
+	Event(Event)
+	Sample(s Sample, mode string)
 }
 
 type Monitor struct {
@@ -149,6 +158,7 @@ type Monitor struct {
 	testSawFault bool
 	failures     int
 	everOnline   bool
+	waitNoted    bool // "Waiting for the UPS" logged
 	batterySince time.Time
 	lowNotified  bool
 	macShutdown  bool
@@ -433,7 +443,8 @@ func (m *Monitor) fail(err error, deviceGone bool) {
 	case wasConnected:
 		m.addEventLocked(KindConnection, "alert", "Lost connection to the UPS: "+err.Error())
 		m.notifyLocked("UPS connection lost", err.Error())
-	case !m.everOnline && len(m.events) == 0:
+	case !m.everOnline && !m.waitNoted:
+		m.waitNoted = true
 		m.addEventLocked(KindConnection, "warn", "Waiting for the UPS: "+err.Error())
 	}
 	m.broadcastLocked(nil)
@@ -480,6 +491,9 @@ func (m *Monitor) update(st ups.Status) (unmute bool) {
 
 	sample := Sample{T: now.UnixMilli(), In: st.InputVoltage, Out: st.OutputVoltage, Load: st.LoadPercent, Batt: st.BatteryVoltage, Freq: st.Frequency, Charge: snap.Charge}
 	m.history = append(m.history, sample)
+	if m.actions.Log != nil {
+		m.actions.Log.Sample(sample, snap.Mode)
+	}
 	cut := now.Add(-historyWindow).UnixMilli()
 	i := 0
 	for i < len(m.history) && m.history[i].T < cut {
@@ -646,6 +660,18 @@ func (m *Monitor) addEventLocked(kind, level, msg string) {
 		m.events = m.events[len(m.events)-maxEvents:]
 	}
 	m.pending = append(m.pending, e)
+	if m.actions.Log != nil {
+		m.actions.Log.Event(e)
+	}
+}
+
+// Restore seeds the recent events, e.g. from the log after a restart, so the
+// dashboard doesn't start empty. Call it before Run.
+func (m *Monitor) Restore(events []Event) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	all := append(append([]Event(nil), events...), m.events...)
+	m.events = all[max(0, len(all)-maxEvents):]
 }
 
 func (m *Monitor) notifyLocked(title, msg string) {

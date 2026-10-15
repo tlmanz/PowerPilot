@@ -2,6 +2,7 @@
 // (shutdown, restart) always end in an explicit confirmation modal.
 import { $, num, setText, toast } from './core.js';
 import { openEventsDialog } from './events.js';
+import { openLogs } from './logs.js';
 import { openHistoryDialog } from './charts.js';
 
 const THRESHOLDS = [10, 15, 20, 25, 30, 40, 50];
@@ -225,6 +226,7 @@ export function wireControls(source, getState) {
     $('st-shutdown').checked = cfg.shutdown_mac;
     $('st-after').value = cfg.shutdown_after_minutes;
     $('st-ah').value = cfg.battery_ah;
+    $('st-keep').value = cfg.log_retention_days;
     setText('st-error', '');
     $('settings-dialog').showModal();
   };
@@ -240,6 +242,7 @@ export function wireControls(source, getState) {
         shutdown_mac: $('st-shutdown').checked,
         shutdown_after_minutes: Number($('st-after').value),
         battery_ah: Number($('st-ah').value),
+        log_retention_days: Number($('st-keep').value),
       });
       $('settings-dialog').close();
       toast('Settings saved');
@@ -255,7 +258,8 @@ export function wireControls(source, getState) {
     btn.classList.add('spin');
     source.refresh().catch((err) => toast(err.message, true));
   });
-  $('events-all').addEventListener('click', openEventsDialog);
+  // With logs on disk, "View all" browses them; mock data has only memory.
+  $('events-all').addEventListener('click', () => (source.logs ? openLogs('events') : openEventsDialog()));
   $('ed-close').addEventListener('click', () => $('events-dialog').close());
   $('history-open').addEventListener('click', openHistoryDialog);
   $('hd-close').addEventListener('click', () => $('history-dialog').close());
