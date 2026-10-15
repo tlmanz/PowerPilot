@@ -1,12 +1,17 @@
 PowerPilot is a desktop dashboard and background service for USB UPSes that speak the Megatec/Voltronic protocol (USB ID `0665:5161`). It shows live power, battery and load data, logs power events, sends notifications, and controls the UPS (alarm, self-test, outlet shutdown and restart).
 
-## What's new in v1.0.1
+## What's new in v1.0.2
 
-- **Linux: the UPS connects without root.** The v1.0.0 udev rule ran too late for systemd to give your user access, so the dashboard showed *no permission to open /dev/hidrawN*. The rule is now `70-powerpilot.rules`. If you installed v1.0.0, follow the Linux steps under *Upgrading from v1.0.0*.
+- **The dashboard window opens at full size on Linux and Windows.** It used to open inside your already-running Chrome or Edge, which ignored the requested size. So it came up too narrow for the dashboard, and on KDE with a generic icon. It now runs as a window of its own, with the PowerPilot icon.
+- **The window remembers its size.** Resize it and the next launch opens at that size. Closing it while maximized keeps the last normal size.
+
+### From v1.0.1
+
+- **Linux: the UPS connects without root.** The v1.0.0 udev rule ran too late for systemd to give your user access, so the dashboard showed *no permission to open /dev/hidrawN*. The rule is now `70-powerpilot.rules`.
 - **Trends tooltips** are no longer cut off at the top when the dashboard fills the window.
 - **Permission errors** no longer tell you to check the USB cable.
 
-## Upgrading from v1.0.0
+## Upgrading
 
 The background service keeps running the old version until it restarts, so:
 
@@ -18,19 +23,21 @@ The background service keeps running the old version until it restarts, so:
 
 **Windows:** Windows won't replace a running program. In Task Manager, end every **PowerPilot.exe**. Then replace the file and open it.
 
-**Linux:** From the extracted archive, swap the udev rule, then replace the binary:
+**Linux:** From the extracted archive, replace the binary. `powerpilot install` also updates the app-menu entry.
 
 ```sh
-sudo rm /etc/udev/rules.d/99-powerpilot.rules
-sudo cp 70-powerpilot.rules /etc/udev/rules.d/
-sudo udevadm control --reload && sudo udevadm trigger
-
 systemctl --user stop powerpilot
 cp powerpilot ~/.local/bin/
 ~/.local/bin/powerpilot install
 ```
 
-Then unplug and replug the UPS's USB cable.
+Upgrading from v1.0.0? Also swap the udev rule, then unplug and replug the UPS's USB cable:
+
+```sh
+sudo rm /etc/udev/rules.d/99-powerpilot.rules
+sudo cp 70-powerpilot.rules /etc/udev/rules.d/
+sudo udevadm control --reload && sudo udevadm trigger
+```
 
 ## Downloads
 
