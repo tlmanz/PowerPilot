@@ -1,4 +1,4 @@
-PowerPilot is a desktop dashboard and background service for USB UPSes that speak the Megatec/Voltronic protocol (USB ID `0665:5161`, e.g. Prolink PRO2000SFCU). It shows live power, battery and load data, logs power events, sends notifications, and controls the UPS (alarm, self-test, outlet shutdown and restart).
+PowerPilot is a desktop dashboard and background service for USB UPSes that speak the Megatec/Voltronic protocol (USB ID `0665:5161`). It shows live power, battery and load data, logs power events, sends notifications, and controls the UPS (alarm, self-test, outlet shutdown and restart).
 
 ## What's new in v1.0.1
 
@@ -59,7 +59,7 @@ The dashboard is always at http://127.0.0.1:8484, and the service only listens o
 ## Notes
 
 - **Readings:**
-  - Battery % uses the same formula as the vendor's ViewPower software.
+  - Battery % uses the same formula as Voltronic's ViewPower software.
   - Runtime, watts and VA are estimates. Set your battery's Ah in Settings for a better runtime estimate.
-- **Unreported values:** this UPS doesn't report temperature, fan speed or power factor, so those show as *Not reported*.
+- **Unreported values:** not every UPS reports every value (temperature, fan speed and power factor are often missing). Anything your UPS doesn't send shows as *Not reported*.
 - **Platform testing:** the Windows and Linux builds are new. Please open an issue if your UPS isn't detected there.
