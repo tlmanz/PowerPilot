@@ -2,6 +2,7 @@ PowerPilot is a desktop dashboard and background service for USB UPSes that spea
 
 ## What's new in v1.0.3
 
+- **Update from Settings.** The new *Updates* section checks for a newer release. *Update now* downloads it, checks it against the release's published checksums, installs it and restarts PowerPilot. Getting to v1.0.3 is still a manual upgrade (see *Upgrading*); later versions install from Settings. PowerPilot needs write access to the folder it's installed in.
 - **Linux: the window always shows the PowerPilot icon.** The v1.0.2 window could still show KDE's generic Wayland icon. The app-menu entry is now named after the window's app ID, so the desktop always finds the PowerPilot icon. Run `powerpilot install` after upgrading (see *Upgrading*).
 - **Version tag:** the header shows the PowerPilot version as a tag next to the app name.
 
