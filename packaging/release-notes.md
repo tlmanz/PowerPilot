@@ -1,5 +1,37 @@
 PowerPilot is a desktop dashboard and background service for USB UPSes that speak the Megatec/Voltronic protocol (USB ID `0665:5161`, e.g. Prolink PRO2000SFCU). It shows live power, battery and load data, logs power events, sends notifications, and controls the UPS (alarm, self-test, outlet shutdown and restart).
 
+## What's new in v1.0.1
+
+- **Linux: the UPS connects without root.** The v1.0.0 udev rule ran too late for systemd to give your user access, so the dashboard showed *no permission to open /dev/hidrawN*. The rule is now `70-powerpilot.rules`. If you installed v1.0.0, follow the Linux steps under *Upgrading from v1.0.0*.
+- **Trends tooltips** are no longer cut off at the top when the dashboard fills the window.
+- **Permission errors** no longer tell you to check the USB cable.
+
+## Upgrading from v1.0.0
+
+The background service keeps running the old version until it restarts, so:
+
+**macOS:** Replace **PowerPilot.app** in Applications, then log out and back in. Or restart the service right away from Terminal:
+
+```sh
+/Applications/PowerPilot.app/Contents/MacOS/powerpilot install
+```
+
+**Windows:** Windows won't replace a running program. In Task Manager, end every **PowerPilot.exe**. Then replace the file and open it.
+
+**Linux:** From the extracted archive, swap the udev rule, then replace the binary:
+
+```sh
+sudo rm /etc/udev/rules.d/99-powerpilot.rules
+sudo cp 70-powerpilot.rules /etc/udev/rules.d/
+sudo udevadm control --reload && sudo udevadm trigger
+
+systemctl --user stop powerpilot
+cp powerpilot ~/.local/bin/
+~/.local/bin/powerpilot install
+```
+
+Then unplug and replug the UPS's USB cable.
+
 ## Downloads
 
 | System | File |
