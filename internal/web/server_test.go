@@ -22,7 +22,7 @@ func newTestHandler(t *testing.T) http.Handler {
 		t.Fatal(err)
 	}
 	mon := monitor.New(time.Second, monitor.Device{RatedVA: 2000, RatedW: 1200}, store, monitor.Actions{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	h, err := Handler(mon, "127.0.0.1:8484")
+	h, err := Handler(mon, "127.0.0.1:8484", filepath.Join(t.TempDir(), "window.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,6 +64,9 @@ func TestGuard(t *testing.T) {
 		{"valid command, no UPS", "POST", "/api/command", okHost, okOrigin, js, `{"id":"test.quick"}`, 503},
 		{"bad settings", "PUT", "/api/settings", okHost, okOrigin, js, `{"low_battery_percent":1,"notify":true,"shutdown_after_minutes":5,"battery_ah":9}`, 400},
 		{"good settings", "PUT", "/api/settings", okHost, okOrigin, js, `{"low_battery_percent":25,"notify":true,"shutdown_after_minutes":5,"battery_ah":9}`, 200},
+		{"tiny window", "PUT", "/api/window", okHost, okOrigin, js, `{"width":10,"height":10}`, 400},
+		{"cross-site window", "PUT", "/api/window", okHost, "https://evil.example", js, `{"width":1300,"height":800}`, 403},
+		{"window size", "PUT", "/api/window", okHost, okOrigin, js, `{"width":1300,"height":800}`, 200},
 	}
 	for _, c := range cases {
 		w := do(h, c.method, c.path, c.host, c.origin, c.ctype, c.body)

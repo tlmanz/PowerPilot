@@ -98,6 +98,8 @@ RestartSec=10
 WantedBy=default.target
 `
 
+// StartupWMClass is the app ID Chrome gives the dashboard window (its own
+// profile is "Default"), so the window groups with this entry.
 const desktopTemplate = `[Desktop Entry]
 Type=Application
 Name=PowerPilot
@@ -106,4 +108,5 @@ Exec="%s" app
 Icon=powerpilot
 Terminal=false
 Categories=Utility;System;Monitor;
+StartupWMClass=chrome-127.0.0.1__-Default
 `

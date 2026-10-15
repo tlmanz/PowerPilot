@@ -28,17 +28,19 @@ func Logo() []byte {
 }
 
 type server struct {
-	mon   *monitor.Monitor
-	hosts map[string]bool
+	mon        *monitor.Monitor
+	hosts      map[string]bool
+	windowFile string
 }
 
 // Handler returns the dashboard for a server listening on listenAddr.
-func Handler(mon *monitor.Monitor, listenAddr string) (http.Handler, error) {
+// windowFile is where the dashboard window reports its size.
+func Handler(mon *monitor.Monitor, listenAddr, windowFile string) (http.Handler, error) {
 	_, port, err := net.SplitHostPort(listenAddr)
 	if err != nil {
 		return nil, err
 	}
-	s := &server{mon: mon, hosts: map[string]bool{
+	s := &server{mon: mon, windowFile: windowFile, hosts: map[string]bool{
 		listenAddr:          true,
 		"localhost:" + port: true,
 		"127.0.0.1:" + port: true,
@@ -55,6 +57,7 @@ func Handler(mon *monitor.Monitor, listenAddr string) (http.Handler, error) {
 	mux.HandleFunc("POST /api/command", s.command)
 	mux.HandleFunc("POST /api/refresh", s.refresh)
 	mux.HandleFunc("PUT /api/settings", s.putSettings)
+	mux.HandleFunc("PUT /api/window", s.putWindow)
 	return s.guard(mux), nil
 }
 
@@ -159,6 +162,24 @@ func (s *server) putSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.mon.UpdateSettings(v); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+// putWindow remembers the size of PowerPilot's own window (Linux, Windows) so
+// "powerpilot app" can open it at that size next time.
+func (s *server) putWindow(w http.ResponseWriter, r *http.Request) {
+	var v settings.Window
+	if !decode(w, r, &v) {
+		return
+	}
+	if err := v.Validate(); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := settings.SaveWindow(s.windowFile, v); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}

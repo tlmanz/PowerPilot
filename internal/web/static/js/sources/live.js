@@ -5,6 +5,7 @@
 //   command(id, params) -> Promise<{sent}>
 //   saveSettings(settings) -> Promise<settings>
 //   refresh() -> Promise
+// This one also has saveWindow({width, height}) for PowerPilot's own window.
 import { fromLive, fromLiveEvent, fromLiveSample } from '../state.js';
 
 async function api(method, path, body) {
@@ -70,5 +71,6 @@ export function createLiveSource() {
       return settings;
     },
     refresh: () => api('POST', '/api/refresh', {}),
+    saveWindow: (size) => api('PUT', '/api/window', size),
   };
 }

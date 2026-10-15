@@ -75,20 +75,26 @@ func (s *Store) Set(v Settings) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
-		return err
-	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, append(data, '\n'), 0o600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, s.path); err != nil {
+	if err := writeJSON(s.path, v); err != nil {
 		return err
 	}
 	s.cur = v
 	return nil
+}
+
+// writeJSON replaces path with v as indented JSON, via a temp file so a crash
+// never leaves it half written. Callers serialize writes to the same path.
+func writeJSON(path string, v any) error {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, append(data, '\n'), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }

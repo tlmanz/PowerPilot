@@ -16,6 +16,15 @@ func ConfigDir() (string, error) {
 	return filepath.Join(dir, "PowerPilot"), nil
 }
 
+// WindowFile keeps the dashboard window's size between launches.
+func WindowFile() string {
+	dir, err := ConfigDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, "window.json")
+}
+
 // PIDFile is where the running service records its process ID.
 func PIDFile() string {
 	dir, err := ConfigDir()

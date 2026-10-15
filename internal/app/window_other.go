@@ -5,20 +5,43 @@
 package app
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
+
+	"github.com/tlmanz/PowerPilot/internal/service"
+	"github.com/tlmanz/PowerPilot/internal/settings"
 )
 
 // Run opens the dashboard window and returns; the browser owns the window.
 func Run(url string) {
+	// The page reports its size when resized; "?app" tells it this is our own
+	// window, not a browser tab.
+	size := settings.Window{Width: 1440, Height: 952}
+	if saved, ok := settings.LoadWindow(service.WindowFile()); ok {
+		size = saved
+	}
+	args := []string{
+		"--app=" + strings.TrimSuffix(url, "/") + "/?app",
+		fmt.Sprintf("--window-size=%d,%d", size.Width, size.Height),
+		"--new-window",
+	}
+	// A profile of our own starts a separate browser process even when the
+	// browser is already open, which otherwise ignores --window-size. It also
+	// gives the window a stable app ID and the dashboard's icon on Linux.
+	if dir, err := os.UserCacheDir(); err == nil {
+		args = append(args, "--user-data-dir="+filepath.Join(dir, "PowerPilot", "browser"),
+			"--no-first-run", "--no-default-browser-check")
+	}
 	for _, b := range browsers() {
 		path, err := exec.LookPath(b)
 		if err != nil {
 			continue
 		}
-		cmd := exec.Command(path, "--app="+url, "--window-size=1440,952", "--new-window")
+		cmd := exec.Command(path, args...)
 		if cmd.Start() == nil {
 			go cmd.Wait()
 			return

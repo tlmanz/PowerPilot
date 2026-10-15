@@ -102,7 +102,7 @@ func serve(args []string) {
 		AppVersion: version,
 	}
 	mon := monitor.New(*interval, device, store, monitor.Actions{Notify: system.Notify, ShutDown: system.ShutDown}, log)
-	handler, err := web.Handler(mon, *addr)
+	handler, err := web.Handler(mon, *addr, service.WindowFile())
 	if err != nil {
 		log.Error("bad listen address", "err", err)
 		os.Exit(2)

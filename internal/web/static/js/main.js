@@ -57,3 +57,18 @@ new ResizeObserver(() => {
     renderEvents();
   }, 100);
 }).observe(document.querySelector('.app'));
+
+// In PowerPilot's own window (Linux, Windows: opened with ?app), remember the
+// size so the next launch opens at it.
+if (params.has('app') && source.saveWindow) {
+  let sizeTimer;
+  addEventListener('resize', () => {
+    clearTimeout(sizeTimer);
+    sizeTimer = setTimeout(() => {
+      // Maximized or full screen: keep the last normal size instead. Only the
+      // width is reliable; on Wayland availHeight doesn't exclude panels.
+      if (outerWidth >= screen.availWidth) return;
+      source.saveWindow({ width: outerWidth, height: outerHeight }).catch(() => {});
+    }, 500);
+  });
+}
