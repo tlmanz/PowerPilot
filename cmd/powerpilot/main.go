@@ -26,6 +26,7 @@ import (
 	"github.com/tlmanz/PowerPilot/internal/service"
 	"github.com/tlmanz/PowerPilot/internal/settings"
 	"github.com/tlmanz/PowerPilot/internal/system"
+	"github.com/tlmanz/PowerPilot/internal/update"
 	"github.com/tlmanz/PowerPilot/internal/ups"
 	"github.com/tlmanz/PowerPilot/internal/web"
 )
@@ -102,7 +103,22 @@ func serve(args []string) {
 		AppVersion: version,
 	}
 	mon := monitor.New(*interval, device, store, monitor.Actions{Notify: system.Notify, ShutDown: system.ShutDown}, log)
-	handler, err := web.Handler(mon, *addr, service.WindowFile())
+
+	exe, err := executable()
+	if err != nil {
+		log.Error("cannot find the running program", "err", err)
+		os.Exit(1)
+	}
+	if from := os.Getenv(update.UpdatedFromEnv); from != "" {
+		os.Unsetenv(update.UpdatedFromEnv)
+		mon.Note("good", fmt.Sprintf("Updated PowerPilot from %s to %s", from, version))
+		if err := service.Refresh(exe, web.Logo()); err != nil {
+			log.Warn("could not refresh the app-menu entry", "err", err)
+		}
+	}
+	go update.Cleanup(exe)
+
+	handler, err := web.Handler(mon, *addr, service.WindowFile(), update.New(version, exe))
 	if err != nil {
 		log.Error("bad listen address", "err", err)
 		os.Exit(2)
@@ -130,8 +146,13 @@ func serve(args []string) {
 		srv.Shutdown(shutdownCtx)
 	}()
 
+	ln, err := listen(*addr)
+	if err != nil {
+		log.Error("cannot listen", "err", err)
+		os.Exit(1)
+	}
 	log.Info("dashboard listening", "url", "http://"+*addr, "version", version)
-	err = srv.ListenAndServe()
+	err = srv.Serve(ln)
 	stop()
 	<-monDone
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -166,14 +187,34 @@ func openWindow(args []string) {
 }
 
 func installService() error {
-	exe, err := os.Executable()
+	exe, err := executable()
 	if err != nil {
 		return err
 	}
-	if exe, err = filepath.EvalSymlinks(exe); err != nil {
-		return err
-	}
 	return service.Install(exe, web.Logo())
+}
+
+// executable is the running program's real path, symlinks resolved.
+func executable() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(exe)
+}
+
+// listen retries for a while: after an update on Windows the previous process
+// may still hold the port for a moment.
+func listen(addr string) (net.Listener, error) {
+	var err error
+	for range 50 {
+		var ln net.Listener
+		if ln, err = net.Listen("tcp", addr); err == nil {
+			return ln, nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return nil, err
 }
 
 func reachable(url string) bool {

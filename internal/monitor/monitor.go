@@ -233,6 +233,14 @@ func (m *Monitor) UpdateSettings(s settings.Settings) error {
 	return nil
 }
 
+// Note records an event that doesn't come from the UPS, such as an update.
+func (m *Monitor) Note(level, msg string) {
+	m.mu.Lock()
+	m.addEventLocked(KindInfo, level, msg)
+	m.mu.Unlock()
+	m.Poke()
+}
+
 // alarmCondition reports whether the UPS has a reason to be beeping.
 func alarmCondition(st ups.Status) bool {
 	return st.OnBattery || st.BatteryLow || st.Fault || st.LoadPercent >= 100

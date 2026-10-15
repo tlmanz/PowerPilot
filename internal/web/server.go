@@ -2,6 +2,7 @@
 package web
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/tlmanz/PowerPilot/internal/monitor"
 	"github.com/tlmanz/PowerPilot/internal/settings"
+	"github.com/tlmanz/PowerPilot/internal/update"
 	"github.com/tlmanz/PowerPilot/internal/ups"
 )
 
@@ -27,20 +29,28 @@ func Logo() []byte {
 	return b
 }
 
+// Updater checks for and installs new releases (package update).
+type Updater interface {
+	Check(context.Context) (update.Status, error)
+	Apply(context.Context) (string, error)
+	Restart() error
+}
+
 type server struct {
 	mon        *monitor.Monitor
 	hosts      map[string]bool
 	windowFile string
+	updater    Updater
 }
 
 // Handler returns the dashboard for a server listening on listenAddr.
 // windowFile is where the dashboard window reports its size.
-func Handler(mon *monitor.Monitor, listenAddr, windowFile string) (http.Handler, error) {
+func Handler(mon *monitor.Monitor, listenAddr, windowFile string, updater Updater) (http.Handler, error) {
 	_, port, err := net.SplitHostPort(listenAddr)
 	if err != nil {
 		return nil, err
 	}
-	s := &server{mon: mon, windowFile: windowFile, hosts: map[string]bool{
+	s := &server{mon: mon, windowFile: windowFile, updater: updater, hosts: map[string]bool{
 		listenAddr:          true,
 		"localhost:" + port: true,
 		"127.0.0.1:" + port: true,
@@ -58,6 +68,8 @@ func Handler(mon *monitor.Monitor, listenAddr, windowFile string) (http.Handler,
 	mux.HandleFunc("POST /api/refresh", s.refresh)
 	mux.HandleFunc("PUT /api/settings", s.putSettings)
 	mux.HandleFunc("PUT /api/window", s.putWindow)
+	mux.HandleFunc("GET /api/update", s.checkUpdate)
+	mux.HandleFunc("POST /api/update", s.applyUpdate)
 	return s.guard(mux), nil
 }
 
@@ -184,6 +196,42 @@ func (s *server) putWindow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
+}
+
+func (s *server) checkUpdate(w http.ResponseWriter, r *http.Request) {
+	st, err := s.updater.Check(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
+// applyUpdate installs the latest release and answers, then restarts the
+// service on it; the dashboard reloads when it sees the new version.
+func (s *server) applyUpdate(w http.ResponseWriter, r *http.Request) {
+	var body struct{}
+	if !decode(w, r, &body) {
+		return
+	}
+	v, err := s.updater.Apply(r.Context())
+	switch {
+	case errors.Is(err, update.ErrBlocked):
+		writeError(w, http.StatusConflict, err)
+		return
+	case err != nil:
+		s.mon.Note("warn", "Update failed: "+err.Error())
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	s.mon.Note("info", "Installed PowerPilot "+v+", restarting")
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": v})
+	go func() {
+		time.Sleep(500 * time.Millisecond) // let the reply reach the dashboard
+		if err := s.updater.Restart(); err != nil {
+			s.mon.Note("alert", "Could not restart after the update: "+err.Error())
+		}
+	}()
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {

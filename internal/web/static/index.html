@@ -50,7 +50,7 @@
       <img class="brand-logo" src="assets/logo.png" alt="" width="40" height="40">
       <div>
         <div class="brand-name" id="h-name">UPS</div>
-        <div class="brand-sub" id="h-app">PowerPilot</div>
+        <div class="brand-sub">PowerPilot <span class="version" id="h-version" hidden></span></div>
       </div>
     </div>
     <span id="h-conn" class="conn off">Connecting…</span>
@@ -267,7 +267,7 @@
 </dialog>
 
 <dialog id="settings-dialog">
-  <h2>Shutdown configuration</h2>
+  <h2>Settings</h2>
   <p>Stored on this Mac. The service applies changes immediately.</p>
   <label class="check"><input type="checkbox" id="st-notify"> Show macOS notifications for power events</label>
   <label class="field"><span>Low battery alarm below</span><select id="st-low" class="select"></select></label>
@@ -281,6 +281,15 @@
   <p class="hint">The first automatic shutdown asks permission to control System Events.</p>
   <div class="error" id="st-error"></div>
   <div class="actions"><button class="btn subtle" id="st-cancel">Cancel</button><button class="btn primary" id="st-ok">Save</button></div>
+  <section class="updates" id="up-section">
+    <h3>Updates</h3>
+    <p class="update-status"><span id="up-status"></span> <a class="link" id="up-notes" target="_blank" rel="noopener" hidden>What's new</a></p>
+    <div class="error" id="up-error"></div>
+    <div class="actions start">
+      <button class="btn subtle" id="up-check">Check for updates</button>
+      <button class="btn primary" id="up-apply" hidden>Update now</button>
+    </div>
+  </section>
 </dialog>
 
 <dialog id="events-dialog" class="wide">

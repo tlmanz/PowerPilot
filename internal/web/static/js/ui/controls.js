@@ -160,10 +160,65 @@ export function wireControls(source, getState) {
     }
   });
 
+  // Updates (settings dialog). Only the live service can update itself.
+  let updating = false;
+  const showUpdate = (text, { url = '', canApply = false } = {}) => {
+    setText('up-status', text);
+    const notes = $('up-notes');
+    notes.hidden = !url;
+    if (url) notes.href = url;
+    $('up-apply').hidden = !canApply;
+  };
+  const resetUpdate = () => {
+    if (updating) return;
+    const v = getState().device.appVersion;
+    showUpdate(v ? `You have PowerPilot ${v}.` : '');
+    setText('up-error', '');
+  };
+  $('up-section').hidden = !source.checkUpdate;
+  $('up-check').addEventListener('click', async () => {
+    const btn = $('up-check');
+    btn.disabled = true;
+    setText('up-error', '');
+    showUpdate('Checking for updates…');
+    try {
+      const st = await source.checkUpdate();
+      if (st.available) {
+        showUpdate(`${st.latest} is available.${st.blocked ? ` ${st.blocked}` : ''}`, { url: st.url, canApply: !st.blocked });
+      } else if (st.blocked) {
+        showUpdate(st.blocked);
+      } else {
+        showUpdate(`${st.current} is the latest version.`, { url: st.url });
+      }
+    } catch (err) {
+      resetUpdate();
+      setText('up-error', err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  $('up-apply').addEventListener('click', async () => {
+    updating = true;
+    $('up-apply').disabled = $('up-check').disabled = true;
+    setText('up-error', '');
+    showUpdate('Downloading and installing the update…');
+    try {
+      const r = await source.applyUpdate();
+      // The live source reloads the page once the service is back on it.
+      showUpdate(`Installed ${r.version}. PowerPilot is restarting; this page reloads by itself.`);
+    } catch (err) {
+      updating = false;
+      $('up-apply').disabled = $('up-check').disabled = false;
+      resetUpdate();
+      setText('up-error', err.message);
+    }
+  });
+
   // Shutdown configuration (settings dialog).
   const openSettings = () => {
     const cfg = getState().settings;
     if (!cfg) return;
+    resetUpdate();
     $('st-notify').checked = cfg.notify;
     fillThresholds($('st-low'), cfg.low_battery_percent);
     $('st-low').value = String(cfg.low_battery_percent);

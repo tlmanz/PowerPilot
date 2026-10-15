@@ -3,7 +3,7 @@
 
 #include "window_darwin.h"
 
-@interface UPSAppDelegate : NSObject <NSApplicationDelegate, WKNavigationDelegate>
+@interface UPSAppDelegate : NSObject <NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate>
 @property(strong) NSWindow *window;
 @property(strong) WKWebView *web;
 @property(strong) NSURL *url;
@@ -27,6 +27,7 @@
 
 	self.web = [[WKWebView alloc] initWithFrame:frame configuration:[WKWebViewConfiguration new]];
 	self.web.navigationDelegate = self;
+	self.web.UIDelegate = self;
 	[self.web setValue:@NO forKey:@"drawsBackground"];
 	self.window.contentView = self.web;
 
@@ -43,6 +44,16 @@
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)app {
 	return YES;
+}
+
+// Links that open a new window (release notes) go to the default browser.
+- (WKWebView *)webView:(WKWebView *)web createWebViewWithConfiguration:(WKWebViewConfiguration *)config
+	forNavigationAction:(WKNavigationAction *)action windowFeatures:(WKWindowFeatures *)features {
+	NSURL *url = action.request.URL;
+	if ([url.scheme isEqualToString:@"https"]) {
+		[[NSWorkspace sharedWorkspace] openURL:url];
+	}
+	return nil;
 }
 
 // The service may still be starting (or not installed): explain, then keep retrying.

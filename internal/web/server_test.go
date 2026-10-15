@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/tlmanz/PowerPilot/internal/monitor"
 	"github.com/tlmanz/PowerPilot/internal/settings"
+	"github.com/tlmanz/PowerPilot/internal/update"
 )
 
 // newTestHandler uses a monitor that never runs, so no request reaches a UPS.
@@ -22,11 +24,27 @@ func newTestHandler(t *testing.T) http.Handler {
 		t.Fatal(err)
 	}
 	mon := monitor.New(time.Second, monitor.Device{RatedVA: 2000, RatedW: 1200}, store, monitor.Actions{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	h, err := Handler(mon, "127.0.0.1:8484", filepath.Join(t.TempDir(), "window.json"))
+	h, err := Handler(mon, "127.0.0.1:8484", filepath.Join(t.TempDir(), "window.json"), &fakeUpdater{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return h
+}
+
+// fakeUpdater offers v9.9.9 and never touches the program or restarts.
+type fakeUpdater struct{ restarted chan struct{} }
+
+func (f *fakeUpdater) Check(context.Context) (update.Status, error) {
+	return update.Status{Current: "v1.0.0", Latest: "v9.9.9", Available: true}, nil
+}
+
+func (f *fakeUpdater) Apply(context.Context) (string, error) { return "v9.9.9", nil }
+
+func (f *fakeUpdater) Restart() error {
+	if f.restarted != nil {
+		close(f.restarted)
+	}
+	return nil
 }
 
 func do(h http.Handler, method, path, host, origin, ctype, body string) *httptest.ResponseRecorder {
@@ -67,11 +85,36 @@ func TestGuard(t *testing.T) {
 		{"tiny window", "PUT", "/api/window", okHost, okOrigin, js, `{"width":10,"height":10}`, 400},
 		{"cross-site window", "PUT", "/api/window", okHost, "https://evil.example", js, `{"width":1300,"height":800}`, 403},
 		{"window size", "PUT", "/api/window", okHost, okOrigin, js, `{"width":1300,"height":800}`, 200},
+		{"update check", "GET", "/api/update", okHost, "", "", "", 200},
+		{"cross-site update", "POST", "/api/update", okHost, "https://evil.example", js, `{}`, 403},
+		{"form-encoded update", "POST", "/api/update", okHost, okOrigin, "text/plain", `{}`, 415},
 	}
 	for _, c := range cases {
 		w := do(h, c.method, c.path, c.host, c.origin, c.ctype, c.body)
 		if w.Code != c.want {
 			t.Errorf("%s: got %d want %d (%s)", c.name, w.Code, c.want, strings.TrimSpace(w.Body.String()))
 		}
+	}
+}
+
+func TestApplyUpdateRestarts(t *testing.T) {
+	store, err := settings.Open(filepath.Join(t.TempDir(), "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mon := monitor.New(time.Second, monitor.Device{}, store, monitor.Actions{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	upd := &fakeUpdater{restarted: make(chan struct{})}
+	h, err := Handler(mon, "127.0.0.1:8484", filepath.Join(t.TempDir(), "window.json"), upd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := do(h, "POST", "/api/update", "127.0.0.1:8484", "http://127.0.0.1:8484", "application/json", `{}`)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"v9.9.9"`) {
+		t.Fatalf("got %d %s", w.Code, w.Body.String())
+	}
+	select {
+	case <-upd.restarted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the service didn't restart after installing the update")
 	}
 }

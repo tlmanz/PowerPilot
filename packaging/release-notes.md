@@ -1,8 +1,13 @@
 PowerPilot is a desktop dashboard and background service for USB UPSes that speak the Megatec/Voltronic protocol (USB ID `0665:5161`). It shows live power, battery and load data, logs power events, sends notifications, and controls the UPS (alarm, self-test, outlet shutdown and restart).
 
-## What's new in v1.0.2
+## What's new in v1.0.3
 
-- **The dashboard window opens at full size on Linux and Windows.** It used to open inside your already-running Chrome or Edge, which ignored the requested size. So it came up too narrow for the dashboard, and on KDE with a generic icon. It now runs as a window of its own, with the PowerPilot icon.
+- **Linux: the window always shows the PowerPilot icon.** The v1.0.2 window could still show KDE's generic Wayland icon. The app-menu entry is now named after the window's app ID, so the desktop always finds the PowerPilot icon. Run `powerpilot install` after upgrading (see *Upgrading*).
+- **Version tag:** the header shows the PowerPilot version as a tag next to the app name.
+
+### From v1.0.2
+
+- **The dashboard window opens at full size on Linux and Windows.** It used to open inside your already-running Chrome or Edge, which ignored the requested size, so it came up too narrow for the dashboard. It now runs as a window of its own.
 - **The window remembers its size.** Resize it and the next launch opens at that size. Closing it while maximized keeps the last normal size.
 
 ### From v1.0.1

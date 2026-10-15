@@ -5,7 +5,8 @@
 //   command(id, params) -> Promise<{sent}>
 //   saveSettings(settings) -> Promise<settings>
 //   refresh() -> Promise
-// This one also has saveWindow({width, height}) for PowerPilot's own window.
+// This one also has saveWindow({width, height}) for PowerPilot's own window,
+// and checkUpdate() / applyUpdate() for self-updates.
 import { fromLive, fromLiveEvent, fromLiveSample } from '../state.js';
 
 async function api(method, path, body) {
@@ -27,6 +28,11 @@ export function createLiveSource() {
 
   async function load() {
     const s = await api('GET', '/api/state');
+    // Back after an update on a new version: reload for its dashboard.
+    if (device && s.device.app_version !== device.app_version) {
+      location.reload();
+      return;
+    }
     ({ device, snapshot: snap, settings, last_test: lastTest } = s);
     on.history((s.history || []).map(fromLiveSample));
     on.events((s.events || []).map(fromLiveEvent), { replace: true });
@@ -72,5 +78,7 @@ export function createLiveSource() {
     },
     refresh: () => api('POST', '/api/refresh', {}),
     saveWindow: (size) => api('PUT', '/api/window', size),
+    checkUpdate: () => api('GET', '/api/update'),
+    applyUpdate: () => api('POST', '/api/update', {}),
   };
 }

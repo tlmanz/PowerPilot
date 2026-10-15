@@ -5,7 +5,9 @@ const NOT_REPORTED = 'Not reported by this UPS';
 
 export function updateHeader(state, linkUp) {
   setText('h-name', state.device.name || 'UPS');
-  setText('h-app', `PowerPilot${state.device.appVersion ? ` ${state.device.appVersion}` : ''}`);
+  const version = $('h-version');
+  setText(version, state.device.appVersion || '');
+  version.hidden = !state.device.appVersion;
   const conn = $('h-conn');
   const [cls, text] = !linkUp ? ['off', 'Service unreachable'] : state.connected ? ['on', 'Connected'] : ['off', 'Disconnected'];
   conn.className = `conn ${cls}`;

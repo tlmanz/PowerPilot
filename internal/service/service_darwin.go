@@ -43,6 +43,9 @@ func Install(exe string, _ []byte) error {
 	return nil
 }
 
+// Refresh has nothing to do on macOS: the app bundle carries its own icon.
+func Refresh(string, []byte) error { return nil }
+
 // Uninstall stops the agent and removes it.
 func Uninstall() error {
 	home, err := os.UserHomeDir()

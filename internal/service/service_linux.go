@@ -10,7 +10,12 @@ import (
 
 const unitName = "powerpilot.service"
 
-type paths struct{ unit, desktop, icon string }
+// desktopID is the app ID Chrome gives the dashboard window (app.Run's own
+// profile is "Default"). Naming the app-menu entry after it lets KWin and
+// GNOME show the logo even when the window doesn't send an icon itself.
+const desktopID = "chrome-127.0.0.1__-Default"
+
+type paths struct{ unit, desktop, oldDesktop, icon string }
 
 func userPaths() (paths, error) {
 	cfg, err := os.UserConfigDir()
@@ -27,8 +32,10 @@ func userPaths() (paths, error) {
 	}
 	return paths{
 		unit:    filepath.Join(cfg, "systemd", "user", unitName),
-		desktop: filepath.Join(data, "applications", "powerpilot.desktop"),
-		icon:    filepath.Join(data, "icons", "hicolor", "256x256", "apps", "powerpilot.png"),
+		desktop: filepath.Join(data, "applications", desktopID+".desktop"),
+		// v1.0.2 and earlier.
+		oldDesktop: filepath.Join(data, "applications", "powerpilot.desktop"),
+		icon:       filepath.Join(data, "icons", "hicolor", "256x256", "apps", "powerpilot.png"),
 	}, nil
 }
 
@@ -39,20 +46,11 @@ func Install(exe string, icon []byte) error {
 	if err != nil {
 		return err
 	}
-	files := map[string][]byte{
-		p.unit:    []byte(fmt.Sprintf(unitTemplate, exe)),
-		p.desktop: []byte(fmt.Sprintf(desktopTemplate, exe)),
+	if err := writeFile(p.unit, []byte(fmt.Sprintf(unitTemplate, exe))); err != nil {
+		return err
 	}
-	if len(icon) > 0 {
-		files[p.icon] = icon
-	}
-	for path, data := range files {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(path, data, 0o644); err != nil {
-			return err
-		}
+	if err := writeMenuEntry(p, exe, icon); err != nil {
+		return err
 	}
 	for _, args := range [][]string{{"daemon-reload"}, {"enable", unitName}, {"restart", unitName}} {
 		if err := systemctl(args...); err != nil {
@@ -62,6 +60,41 @@ func Install(exe string, icon []byte) error {
 	return nil
 }
 
+// Refresh rewrites an installed service's app-menu entry and icon, which may
+// have changed in an update, without touching the running service.
+func Refresh(exe string, icon []byte) error {
+	p, err := userPaths()
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(p.unit); err != nil {
+		return nil // not installed
+	}
+	return writeMenuEntry(p, exe, icon)
+}
+
+func writeMenuEntry(p paths, exe string, icon []byte) error {
+	if err := writeFile(p.desktop, []byte(fmt.Sprintf(desktopTemplate, exe, desktopID))); err != nil {
+		return err
+	}
+	if len(icon) > 0 {
+		if err := writeFile(p.icon, icon); err != nil {
+			return err
+		}
+	}
+	if err := os.Remove(p.oldDesktop); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+func writeFile(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
+}
+
 // Uninstall stops and disables the unit and removes the files Install wrote.
 func Uninstall() error {
 	p, err := userPaths()
@@ -69,7 +102,7 @@ func Uninstall() error {
 		return err
 	}
 	systemctl("disable", "--now", unitName)
-	for _, path := range []string{p.unit, p.desktop, p.icon} {
+	for _, path := range []string{p.unit, p.desktop, p.oldDesktop, p.icon} {
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return err
 		}
@@ -98,8 +131,7 @@ RestartSec=10
 WantedBy=default.target
 `
 
-// StartupWMClass is the app ID Chrome gives the dashboard window (its own
-// profile is "Default"), so the window groups with this entry.
+// StartupWMClass repeats desktopID for task managers that match on it.
 const desktopTemplate = `[Desktop Entry]
 Type=Application
 Name=PowerPilot
@@ -108,5 +140,5 @@ Exec="%s" app
 Icon=powerpilot
 Terminal=false
 Categories=Utility;System;Monitor;
-StartupWMClass=chrome-127.0.0.1__-Default
+StartupWMClass=%s
 `

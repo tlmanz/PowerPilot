@@ -31,6 +31,9 @@ func Install(exe string, _ []byte) error {
 	return cmd.Start()
 }
 
+// Refresh has nothing to do on Windows: the Run entry points at the same exe.
+func Refresh(string, []byte) error { return nil }
+
 // Uninstall removes the Run entry and stops the running service.
 func Uninstall() error {
 	if err := reg("delete", runKey, "/v", runName, "/f"); err != nil && !strings.Contains(err.Error(), "unable to find") {
