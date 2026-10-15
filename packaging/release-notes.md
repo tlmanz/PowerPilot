@@ -1,25 +1,22 @@
 PowerPilot is a desktop dashboard and background service for USB UPSes that speak the Megatec/Voltronic protocol (USB ID `0665:5161`). It shows live power, battery and load data, logs power events, sends notifications, and controls the UPS (alarm, self-test, outlet shutdown and restart).
 
-## What's new in v1.0.3
+## What's new in v1.0.4
 
-- **Update from Settings.** The new *Updates* section checks for a newer release. *Update now* downloads it, checks it against the release's published checksums, installs it and restarts PowerPilot. Getting to v1.0.3 is still a manual upgrade (see *Upgrading*); later versions install from Settings. PowerPilot needs write access to the folder it's installed in.
-- **Linux: the window always shows the PowerPilot icon.** The v1.0.2 window could still show KDE's generic Wayland icon. The app-menu entry is now named after the window's app ID, so the desktop always finds the PowerPilot icon. Run `powerpilot install` after upgrading (see *Upgrading*).
-- **Version tag:** the header shows the PowerPilot version as a tag next to the app name.
+- **Logs kept on disk.** Every event, and one reading a minute (with the input voltage range and peak load), is saved in a file per day. Open the logs from the new calendar button or **View all** in Recent Events, pick a day, and download any range of days as CSV.
+- **Choose how long logs are kept.** Settings has *Keep event and reading logs for this many days*, 90 by default. Older days are deleted automatically.
+- **Recent Events survives restarts.** It reloads from the logs, so it no longer starts empty after a restart or an update.
 
-### From v1.0.2
+### Earlier in v1.0.x
 
-- **The dashboard window opens at full size on Linux and Windows.** It used to open inside your already-running Chrome or Edge, which ignored the requested size, so it came up too narrow for the dashboard. It now runs as a window of its own.
-- **The window remembers its size.** Resize it and the next launch opens at that size. Closing it while maximized keeps the last normal size.
-
-### From v1.0.1
-
-- **Linux: the UPS connects without root.** The v1.0.0 udev rule ran too late for systemd to give your user access, so the dashboard showed *no permission to open /dev/hidrawN*. The rule is now `70-powerpilot.rules`.
-- **Trends tooltips** are no longer cut off at the top when the dashboard fills the window.
-- **Permission errors** no longer tell you to check the USB cable.
+- **v1.0.3:** update PowerPilot from Settings; the Linux window always shows the PowerPilot icon; the header shows the version.
+- **v1.0.2:** the dashboard window opens at full size on Linux and Windows, and remembers its size.
+- **v1.0.1:** on Linux the UPS connects without root (the udev rule is now `70-powerpilot.rules`); Trends tooltips are no longer cut off; permission errors no longer mention the USB cable.
 
 ## Upgrading
 
-The background service keeps running the old version until it restarts, so:
+**From v1.0.3:** open **Settings**, then **Check for updates** and **Update now**. PowerPilot restarts on the new version by itself.
+
+**From an earlier version**, upgrade by hand. The background service keeps running the old version until it restarts, so:
 
 **macOS:** Replace **PowerPilot.app** in Applications, then log out and back in. Or restart the service right away from Terminal:
 
