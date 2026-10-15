@@ -16,7 +16,8 @@ export function updateHeader(state, linkUp) {
   const banner = $('banner');
   if (linkUp && !state.connected) {
     banner.className = 'banner bad';
-    setText(banner, `UPS not connected${state.error ? `: ${state.error}` : ''}. Check the USB cable.`);
+    const hint = /permission/i.test(state.error) ? '' : ' Check the USB cable.';
+    setText(banner, `UPS not connected${state.error ? `: ${state.error}` : ''}.${hint}`);
     banner.hidden = false;
   } else if (state.connected && state.alarm.active) {
     banner.className = `banner ${state.alarm.level === 'critical' ? 'bad' : 'warn'}`;

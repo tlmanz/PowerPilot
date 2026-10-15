@@ -30,7 +30,7 @@ func Open(vid, pid int) (*Device, error) {
 		path := "/dev/" + filepath.Base(n)
 		f, err := os.OpenFile(path, os.O_RDWR, 0)
 		if errors.Is(err, os.ErrPermission) {
-			return nil, fmt.Errorf("no permission to open %s: install 99-powerpilot.rules (see README)", path)
+			return nil, fmt.Errorf("no permission to open %s: install 70-powerpilot.rules (see README)", path)
 		}
 		if err != nil {
 			return nil, err

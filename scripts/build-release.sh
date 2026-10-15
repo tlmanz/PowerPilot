@@ -32,7 +32,7 @@ linux)
 		name="PowerPilot_${version}_linux_${arch}"
 		mkdir -p "$work/$name"
 		build linux "$arch" 0 "$work/$name/powerpilot"
-		cp packaging/linux/99-powerpilot.rules packaging/linux/INSTALL.txt "$work/$name/"
+		cp packaging/linux/70-powerpilot.rules packaging/linux/INSTALL.txt "$work/$name/"
 		tar -C "$work" -czf "$dist/$name.tar.gz" "$name"
 	done
 	;;

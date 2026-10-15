@@ -15,6 +15,10 @@ const SERIES = [
 let points = [];
 let source = 'live';
 let queued = false;
+let hideTip = () => {};
+
+// Tooltips are position: fixed, so one left showing would float away from its chart on scroll.
+addEventListener('scroll', () => hideTip(), { capture: true, passive: true });
 
 const fmt = (v, unit) => (v == null ? '—' : unit === '%' ? `${num(v, 1)}%` : `${num(v, 1)} ${unit}`);
 
@@ -149,9 +153,15 @@ function lineChart(el, series, { xDomain, yDomain, empty }) {
       tip.append(r);
     }
     tip.hidden = false;
-    const left = Math.min(Math.max(px - tip.offsetWidth / 2, 0), el.clientWidth - tip.offsetWidth);
+    hideTip = hide;
+    // Fixed (viewport) coordinates, so the card's overflow: hidden can't clip it.
+    // Above the chart when the window has room, otherwise below it.
+    const r = svg.getBoundingClientRect();
+    const x = r.left + px * (r.width / W);
+    const left = Math.min(Math.max(x - tip.offsetWidth / 2, r.left), r.right - tip.offsetWidth);
+    const above = r.top - tip.offsetHeight - 6;
     tip.style.left = `${left}px`;
-    tip.style.top = `${-tip.offsetHeight - 6}px`;
+    tip.style.top = `${above >= 0 ? above : r.bottom + 6}px`;
   };
   const hide = () => {
     tip.hidden = true;

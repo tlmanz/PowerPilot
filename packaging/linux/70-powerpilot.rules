@@ -1,3 +1,5 @@
 # PowerPilot: let the logged-in user talk to the UPS's USB HID bridge
 # (Voltronic/Megatec "INNO TECH USB to Serial", 0665:5161).
+# The number must stay below 73: systemd's 73-seat-late.rules turns the
+# uaccess tag into an ACL, and only sees tags set by earlier files.
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0665", ATTRS{idProduct}=="5161", MODE="0660", TAG+="uaccess"

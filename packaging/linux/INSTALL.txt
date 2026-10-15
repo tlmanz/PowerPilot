@@ -3,7 +3,8 @@ PowerPilot for Linux
 
 1. Let your user talk to the UPS (once; needs sudo):
 
-     sudo cp 99-powerpilot.rules /etc/udev/rules.d/
+     sudo rm -f /etc/udev/rules.d/99-powerpilot.rules
+     sudo cp 70-powerpilot.rules /etc/udev/rules.d/
      sudo udevadm control --reload && sudo udevadm trigger
 
    Then unplug and replug the UPS's USB cable.
