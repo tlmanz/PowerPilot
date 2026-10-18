@@ -149,9 +149,10 @@ func TestLogExport(t *testing.T) {
 	// Log one event through the logbook's own writer.
 	done := make(chan struct{})
 	finished := make(chan struct{})
-	go func() { opt.Logs.Run(done); close(finished) }()
+	book := opt.Logs.(*logbook.Book)
+	go func() { book.Run(done); close(finished) }()
 	when := time.Date(2026, 10, 14, 21, 5, 0, 0, time.Local)
-	opt.Logs.Event(monitor.Event{Time: when, Kind: "utility_lost", Level: "alert", Message: "Utility power lost"})
+	book.Event(monitor.Event{Time: when, Kind: "utility_lost", Level: "alert", Message: "Utility power lost"})
 	close(done)
 	<-finished
 

@@ -18,10 +18,12 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/tlmanz/PowerPilot/internal/app"
+	"github.com/tlmanz/PowerPilot/internal/cloud"
 	"github.com/tlmanz/PowerPilot/internal/logbook"
 	"github.com/tlmanz/PowerPilot/internal/monitor"
 	"github.com/tlmanz/PowerPilot/internal/service"
@@ -108,9 +110,43 @@ func serve(args []string) {
 		log.Error("no log directory", "err", err)
 		os.Exit(1)
 	}
-	book := logbook.Open(logDir, func() int { return store.Get().LogRetentionDays }, log)
-	mon := monitor.New(*interval, device, store, monitor.Actions{Notify: system.Notify, ShutDown: system.ShutDown, Log: book}, log)
-	mon.Restore(book.Recent(200))
+	// Cloud: Off (USB only), Publish (USB, also sent to a powerpilot-server)
+	// or Remote (no USB: a UPS on the server). See package cloud.
+	cloudPath := filepath.Join(dir, "cloud.json")
+	cloudCfg, err := cloud.Load(cloudPath)
+	if err != nil {
+		log.Warn("ignoring the Cloud setting", "err", err)
+	}
+	actions := monitor.Actions{Notify: system.Notify, ShutDown: system.ShutDown}
+	var (
+		src  web.Source
+		logs web.Logs
+		link cloud.Link
+		run  []func(<-chan struct{}) // background loops, until shutdown
+	)
+	if cloudCfg.Mode == cloud.ModeRemote {
+		rem := cloud.NewRemote(cloudCfg, store, actions, version, log)
+		src, logs, link = rem, rem.Logs(), rem
+		run = append(run, rem.Run)
+		log.Info("cloud: remote mode", "server", cloudCfg.URL, "device", cloudCfg.Device)
+	} else {
+		book := logbook.Open(logDir, func() int { return store.Get().LogRetentionDays }, log)
+		actions.Log = book
+		var pub *cloud.Publisher
+		if cloudCfg.Mode == cloud.ModePublish {
+			pub = cloud.NewPublisher(cloudCfg, store, device, log)
+			actions.Log, link = cloud.Recorders{book, pub}, pub
+			log.Info("cloud: publish mode", "server", cloudCfg.URL, "device", cloudCfg.Device)
+		}
+		mon := monitor.New(*interval, device, store, actions, log)
+		mon.Restore(book.Recent(200))
+		src, logs = mon, book
+		run = append(run, mon.Run, book.Run)
+		if pub != nil {
+			pub.Attach(mon)
+			run = append(run, pub.Run)
+		}
+	}
 
 	exe, err := executable()
 	if err != nil {
@@ -119,17 +155,18 @@ func serve(args []string) {
 	}
 	if from := os.Getenv(update.UpdatedFromEnv); from != "" {
 		os.Unsetenv(update.UpdatedFromEnv)
-		mon.Note("good", fmt.Sprintf("Updated PowerPilot from %s to %s", from, version))
+		src.Note("good", fmt.Sprintf("Updated PowerPilot from %s to %s", from, version))
 		if err := service.Refresh(exe, web.Logo()); err != nil {
 			log.Warn("could not refresh the app-menu entry", "err", err)
 		}
 	}
 	go update.Cleanup(exe)
 
-	handler, err := web.Handler(mon, *addr, web.Options{
+	handler, err := web.Handler(src, *addr, web.Options{
 		WindowFile: service.WindowFile(),
 		Updater:    update.New(version, exe),
-		Logs:       book,
+		Logs:       logs,
+		Cloud:      cloud.NewSettings(cloudPath, cloudCfg, link, func() monitor.Device { return device }),
 	})
 	if err != nil {
 		log.Error("bad listen address", "err", err)
@@ -146,15 +183,10 @@ func serve(args []string) {
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 
-	monDone, bookDone := make(chan struct{}), make(chan struct{})
-	go func() {
-		mon.Run(ctx.Done())
-		close(monDone)
-	}()
-	go func() {
-		book.Run(ctx.Done())
-		close(bookDone)
-	}()
+	var loops sync.WaitGroup
+	for _, f := range run {
+		loops.Go(func() { f(ctx.Done()) })
+	}
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -170,8 +202,7 @@ func serve(args []string) {
 	log.Info("dashboard listening", "url", "http://"+*addr, "version", version)
 	err = srv.Serve(ln)
 	stop()
-	<-monDone
-	<-bookDone
+	loops.Wait()
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("server failed", "err", err)
 		os.Exit(1)

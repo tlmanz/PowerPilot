@@ -384,6 +384,7 @@ dialog .field > span { font-size: 0.84rem; color: var(--ink-2); }
 dialog .check { display: flex; gap: 0.6rem; align-items: center; margin-bottom: 0.9rem; }
 dialog .radio-list { display: grid; gap: 0.5rem; }
 dialog .radio-list label { display: flex; gap: 0.45rem; align-items: center; }
+#cloud-dialog .radio-list { margin-bottom: 1.1rem; }
 dialog .hint { font-size: 0.78rem; color: var(--ink-3); }
 dialog .error { min-height: 1em; color: var(--bad-ink); font-size: 0.84rem; }
 dialog .actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 0.6rem; }

@@ -53,6 +53,24 @@ The service keeps events and readings on disk, one file per day. Readings are av
 | macOS | `~/Library/Application Support/PowerPilot/logs` |
 | Windows | `%LocalAppData%\PowerPilot\logs` |
 
+## Cloud (optional)
+
+PowerPilot can also work with a PowerPilot server (`powerpilot-server`, in the PowerPilotHardware repo). In **Settings > Cloud**, paste a pairing link from the server's admin page and pick a mode:
+
+| Mode | What PowerPilot does |
+|---|---|
+| Off | As before: the UPS on this computer's USB |
+| Remote | No USB. It shows a UPS from the server, such as one an ESP32 reports, with the same dashboard, controls and logs. |
+| Publish | It reads the USB UPS as before, and also sends it to the server. The phone app can then see it and send it commands. |
+
+- **Notifications and shutdown in Remote mode:**
+  - You get the same desktop notifications as with USB: power lost and restored, low battery, faults.
+  - If the UPS is out of sight for 2 minutes, you're told.
+  - "Shut down this Mac during a power outage" works too, as long as this computer can still reach the server.
+- **Publish mode buffers:** while the server can't be reached, PowerPilot keeps events and readings, up to a day of them, and sends them when it's back.
+- **The token stays out of the dashboard:** the setting is saved in `cloud.json` next to `settings.json`, readable by you only, and the token is never shown again.
+- **Changing the mode restarts the service.**
+
 ## Requirements
 
 | | Supported |

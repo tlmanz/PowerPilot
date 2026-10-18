@@ -295,6 +295,33 @@
       <button class="btn primary" id="up-apply" hidden>Update now</button>
     </div>
   </section>
+  <section class="updates" id="cl-section">
+    <h3>Cloud</h3>
+    <p class="update-status" id="cl-status">Checking…</p>
+    <div class="actions start"><button class="btn subtle" id="cl-open">Set up…</button></div>
+  </section>
+</dialog>
+
+<dialog id="cloud-dialog">
+  <h2>Cloud</h2>
+  <p>Connect PowerPilot to your PowerPilot server, to see a UPS from anywhere or to share this one.</p>
+  <div class="radio-list" role="radiogroup" aria-label="Cloud mode">
+    <label><input type="radio" name="cl-mode" value="off"> <span><b>Off</b>: the UPS on this computer's USB</span></label>
+    <label><input type="radio" name="cl-mode" value="remote"> <span><b>Remote</b>: show a UPS from the server, instead of USB</span></label>
+    <label><input type="radio" name="cl-mode" value="publish"> <span><b>Publish</b>: share this computer's USB UPS with the server</span></label>
+  </div>
+  <div id="cl-fields">
+    <label class="field"><span>Pairing link</span>
+      <input class="input" id="cl-link" placeholder="powerpilot://pair?…" autocomplete="off" spellcheck="false">
+    </label>
+    <p class="hint">Create it on the server's admin page: "Computer: view a UPS" for Remote, "Computer: share its UPS" for Publish. Or fill these in by hand:</p>
+    <label class="field"><span>Server address</span><input class="input" id="cl-url" placeholder="https://ups.example.com" autocomplete="off" spellcheck="false"></label>
+    <label class="field"><span>Device ID</span><input class="input" id="cl-device" placeholder="home" autocomplete="off" spellcheck="false"></label>
+    <label class="field"><span>Token</span><input class="input" id="cl-token" type="password" autocomplete="off"></label>
+  </div>
+  <p class="hint">Saving checks the setting with the server, then restarts PowerPilot's service in the new mode.</p>
+  <div class="error" id="cl-error"></div>
+  <div class="actions"><button class="btn subtle" id="cl-cancel">Cancel</button><button class="btn primary" id="cl-ok">Save and restart</button></div>
 </dialog>
 
 <dialog id="logs-dialog" class="wide logs">

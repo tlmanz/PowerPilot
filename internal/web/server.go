@@ -38,21 +38,44 @@ type Updater interface {
 	Restart() error
 }
 
+// Source is where the dashboard's UPS comes from: the USB monitor, or a UPS
+// on a powerpilot-server in Remote mode (package cloud).
+type Source interface {
+	State() monitor.State
+	Subscribe() (<-chan monitor.Update, func())
+	Execute(id string, p ups.Params) (string, error)
+	Poke()
+	UpdateSettings(settings.Settings) error
+	Note(level, msg string)
+}
+
+// Logs is the event and reading history: the logbook on disk, or the
+// server's in Remote mode.
+type Logs interface {
+	Days() ([]logbook.Day, int64)
+	Events(date string) ([]monitor.Event, error)
+	Readings(date string) ([]logbook.Reading, error)
+	ExportEvents(w io.Writer, from, to string) error
+	ExportReadings(w io.Writer, from, to string) error
+	Prune()
+}
+
 // Options connects the dashboard API to the rest of the service.
 type Options struct {
 	WindowFile string // where the dashboard window reports its size
 	Updater    Updater
-	Logs       *logbook.Book
+	Logs       Logs
+	Cloud      Cloud // the Cloud setting; nil leaves it out
 }
 
 type server struct {
 	Options
-	mon   *monitor.Monitor
+	mon   Source
 	hosts map[string]bool
 }
 
 // Handler returns the dashboard for a server listening on listenAddr.
-func Handler(mon *monitor.Monitor, listenAddr string, opt Options) (http.Handler, error) {
+func Handler(mon Source, listenAddr string, opt Options) (http.Handler, error) {
 	_, port, err := net.SplitHostPort(listenAddr)
 	if err != nil {
 		return nil, err
@@ -81,6 +104,8 @@ func Handler(mon *monitor.Monitor, listenAddr string, opt Options) (http.Handler
 	mux.HandleFunc("GET /api/logs/events", s.logEvents)
 	mux.HandleFunc("GET /api/logs/readings", s.logReadings)
 	mux.HandleFunc("GET /api/logs/export", s.logExport)
+	mux.HandleFunc("GET /api/cloud", s.getCloud)
+	mux.HandleFunc("PUT /api/cloud", s.putCloud)
 	return s.guard(mux), nil
 }
 

@@ -421,3 +421,23 @@ func (m *minute) reading() Reading {
 }
 
 func round(v float64) float64 { return math.Round(v*10) / 10 }
+
+// Minutes turns samples into per-minute readings the way the logbook does,
+// for others that need them (Publish mode sends them to the server).
+type Minutes struct{ acc minute }
+
+// Add takes a sample. When it starts a new minute, it returns the finished one.
+func (m *Minutes) Add(s monitor.Sample, mode string) (Reading, bool) {
+	start := s.T - s.T%60_000
+	var done Reading
+	ok := m.acc.n > 0 && m.acc.start != start
+	if ok {
+		done = m.acc.reading()
+		m.acc = minute{}
+	}
+	if m.acc.n == 0 {
+		m.acc.start = start
+	}
+	m.acc.add(s, mode)
+	return done, ok
+}
