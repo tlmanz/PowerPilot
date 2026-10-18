@@ -1,20 +1,30 @@
-PowerPilot is a desktop dashboard and background service for USB UPSes that speak the Megatec/Voltronic protocol (USB ID `0665:5161`). It shows live power, battery and load data, logs power events, sends notifications, and controls the UPS (alarm, self-test, outlet shutdown and restart).
+PowerPilot is a desktop dashboard and background service for USB UPSes that speak the Megatec/Voltronic protocol (USB ID `0665:5161`). It shows live power, battery and load data, logs power events, sends notifications, and controls the UPS (alarm, self-test, outlet shutdown and restart). It can also show a UPS from a PowerPilot server, from anywhere.
 
-## What's new in v1.0.4
+## What's new in v1.1.0
 
-- **Logs kept on disk.** Every event, and one reading a minute (with the input voltage range and peak load), is saved in a file per day. Open the logs from the new calendar button or **View all** in Recent Events, pick a day, and download any range of days as CSV.
-- **Choose how long logs are kept.** Settings has *Keep event and reading logs for this many days*, 90 by default. Older days are deleted automatically.
-- **Recent Events survives restarts.** It reloads from the logs, so it no longer starts empty after a restart or an update.
+**Cloud.** **Settings > Cloud** connects PowerPilot to a PowerPilot server (`powerpilot-server`). Paste the pairing link from the server's admin page, then choose a mode:
 
-### Earlier in v1.0.x
+- **Remote: see a UPS from anywhere.**
+  - No USB needed. PowerPilot shows a UPS from the server, for example one an ESP32 reports, with the same dashboard, controls, settings and logs.
+  - Desktop notifications work as with USB: power lost and restored, low battery, faults and overload. If the UPS is out of contact for 2 minutes, you're told.
+  - *Shut down this Mac during a power outage* works too, as long as this computer can still reach the server.
+- **Publish: share this computer's UPS.**
+  - PowerPilot keeps its USB UPS and also sends it to the server, so the phone app can see it and control it.
+  - While the server can't be reached, events and readings wait (up to a day) and go up once it's back.
+- **The token stays private.** It's saved in `cloud.json`, readable by you only, and never shown again.
+- **Changing the mode restarts the service.**
+- **Cloud is off by default,** so nothing changes until you turn it on.
 
+### Earlier
+
+- **v1.0.4:** logs kept on disk, a file per day, with CSV export; choose how long they're kept; Recent Events survives restarts.
 - **v1.0.3:** update PowerPilot from Settings; the Linux window always shows the PowerPilot icon; the header shows the version.
 - **v1.0.2:** the dashboard window opens at full size on Linux and Windows, and remembers its size.
 - **v1.0.1:** on Linux the UPS connects without root (the udev rule is now `70-powerpilot.rules`); Trends tooltips are no longer cut off; permission errors no longer mention the USB cable.
 
 ## Upgrading
 
-**From v1.0.3:** open **Settings**, then **Check for updates** and **Update now**. PowerPilot restarts on the new version by itself.
+**From v1.0.3 or v1.0.4:** open **Settings**, then **Check for updates** and **Update now**. PowerPilot restarts on the new version by itself.
 
 **From an earlier version**, upgrade by hand. The background service keeps running the old version until it restarts, so:
 
