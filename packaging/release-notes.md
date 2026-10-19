@@ -1,6 +1,16 @@
 PowerPilot is a desktop dashboard and background service for USB UPSes that speak the Megatec/Voltronic protocol (USB ID `0665:5161`). It shows live power, battery and load data, logs power events, sends notifications, and controls the UPS (alarm, self-test, outlet shutdown and restart). It can also show a UPS from a PowerPilot server, from anywhere.
 
-## What's new in v1.2.0
+## What's new in v1.2.1
+
+**A redesigned Settings window.**
+
+- **Settings are grouped** into Alerts, Power outage, Battery and logs, Updates and Cloud. Each row has an icon, a short description and its control.
+- **Switches** for notifications and the automatic shutdown, like the **UPS Alarm** switch.
+- **Compact number fields** with their unit (min, Ah, days).
+- **The shutdown delay sits under its switch,** and is greyed out while shutdown is off.
+- **Save and Cancel stay at the bottom,** below Updates and Cloud.
+
+### New in v1.2.0
 
 **Tray icon.** PowerPilot now sits in the menu bar (macOS) or the system tray (Windows, Linux), from login.
 
