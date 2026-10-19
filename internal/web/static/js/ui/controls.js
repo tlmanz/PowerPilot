@@ -215,7 +215,14 @@ export function wireControls(source, getState) {
     }
   });
 
-  // Shutdown configuration (settings dialog).
+  // Shutdown configuration (settings dialog). The delay only matters with
+  // shutdown on.
+  const syncShutdown = () => {
+    const on = $('st-shutdown').checked;
+    $('st-after').disabled = !on;
+    $('st-after-row').classList.toggle('off', !on);
+  };
+  $('st-shutdown').addEventListener('change', syncShutdown);
   const openSettings = () => {
     const cfg = getState().settings;
     if (!cfg) return;
@@ -227,12 +234,14 @@ export function wireControls(source, getState) {
     $('st-after').value = cfg.shutdown_after_minutes;
     $('st-ah').value = cfg.battery_ah;
     $('st-keep').value = cfg.log_retention_days;
+    syncShutdown();
     setText('st-error', '');
     $('settings-dialog').showModal();
   };
   $('settings-btn').addEventListener('click', openSettings);
   $('shutdown-cfg-btn').addEventListener('click', openSettings);
   $('st-cancel').addEventListener('click', () => $('settings-dialog').close());
+  $('st-close').addEventListener('click', () => $('settings-dialog').close());
   $('st-ok').addEventListener('click', async () => {
     try {
       await source.saveSettings({
