@@ -81,6 +81,7 @@ export function createMockSource({ scenario = 'cycle', interval = 2000 } = {}) {
     // Transitions → events, like the service raises.
     if (mode !== sim.mode) {
       if (mode === 'battery') {
+        sim.batterySince = Date.now();
         event('utility_lost', 'alert', 'Utility power lost');
         event('on_battery', 'warn', 'Running on battery');
       } else if (sim.mode === 'battery') {
@@ -122,6 +123,7 @@ export function createMockSource({ scenario = 'cycle', interval = 2000 } = {}) {
     };
     s.mode = mode;
     s.status = statusLabel(mode);
+    s.onBatterySec = mode === 'battery' ? (Date.now() - sim.batterySince) / 1000 : null;
     s.input = { voltage: sim.input, frequency: mode === 'battery' ? null : 50 + (Math.random() - 0.5) * 0.2 };
     s.output = { voltage: sim.output, loadPercent: sim.load, watts, va: watts / sim.pf, powerFactor: sim.pf };
     const charging = mode !== 'battery' && mode !== 'test' && sim.battery < 99.5;

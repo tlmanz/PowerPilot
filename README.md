@@ -18,7 +18,7 @@
 
 ![PowerPilot dashboard monitoring a Prolink PRO2000SFCU on mains power](docs/screenshots/dashboard.png)
 
-A desktop dashboard and background service for USB UPSes that speak the Megatec/Voltronic protocol (USB `0665:5161`, e.g. the **Prolink PRO2000SFCU**). It runs on macOS, Windows and Linux, and is written in Go (standard library only, plus cgo on macOS for IOKit and WebKit).
+A desktop dashboard and background service for USB UPSes that speak the Megatec/Voltronic protocol (USB `0665:5161`, e.g. the **Prolink PRO2000SFCU**). It runs on macOS, Windows and Linux, and is written in Go: the standard library, [fyne.io/systray](https://github.com/fyne-io/systray) for the tray icon on Windows and Linux, and cgo on macOS for IOKit, WebKit and the menu-bar icon.
 
 - **Service:** polls the UPS every 2 s, serves the dashboard on `http://127.0.0.1:8484`, logs events, sends notifications, and can shut the computer down during a long outage. It starts at login:
   - **macOS:** a LaunchAgent.
@@ -27,6 +27,7 @@ A desktop dashboard and background service for USB UPSes that speak the Megatec/
 - **App:** opens the dashboard and starts the service on first launch.
   - **macOS:** `PowerPilot.app`, a native window.
   - **Windows and Linux:** an Edge/Chrome/Chromium app window, or the default browser.
+- **Tray icon:** the UPS at a glance in the menu bar (macOS) or system tray (Windows, Linux), from login. See [Tray icon](#tray-icon).
 
 ## During a power outage
 
@@ -36,9 +37,30 @@ During an outage:
 - The UPS display and the Power Flow switch to battery.
 - The alarm banner appears.
 - **Mute** becomes available.
-- Events are logged and a notification is sent.
+- Events are logged and a notification is sent. Each notification ends with a summary of the reading, e.g. "Battery 87.0%, about 22 min left · Load 31.0% (372 W)".
+- Every 5 minutes on battery, a notification sums up the battery and runtime again ("On battery for 10 min").
 
 This view uses the built-in mock data: open `http://127.0.0.1:8484/?source=mock&scenario=battery`. Other scenarios are `bypass` and `fault`.
+
+## Tray icon
+
+PowerPilot puts the UPS in the menu bar (macOS) or the system tray (Windows, Linux). It starts at login, and when you open the app.
+- **The icon** is a battery filled to the charge:
+  - a bolt on mains power;
+  - "!" for a low battery, an overload or a fault;
+  - dimmed while the UPS or the service can't be reached.
+- **During an outage,** macOS shows the charge next to the icon.
+- **Quit** removes the icon until the next login, or until you open the app. The service keeps watching the UPS and sending notifications.
+
+| OS | Click | Right-click |
+|---|---|---|
+| macOS | A panel in the dashboard's style: battery ring with runtime, load, input, output and battery voltage, a banner with **Mute** while the alarm sounds, and **Summary** / **Open Dashboard**. It follows light and dark mode. | Open Dashboard, Show Summary, Quit |
+| Windows | Opens the dashboard | A menu: the reading with icons (choose one to open the dashboard), Mute Alarm while the beeper sounds, Show Summary, Open Dashboard, Quit |
+| Linux | The same menu | |
+
+**Show Summary** posts the reading as a notification. On macOS the window and the icon are one app: closing the window keeps the icon, without a Dock icon. On Linux the icon needs a tray that supports StatusNotifierItem, e.g. KDE, Xfce or Cinnamon; on GNOME, install the AppIndicator extension.
+
+The panel is the service's `tray.html`. To work on it in a browser, open `http://127.0.0.1:8484/tray.html?source=mock&scenario=battery&preview`.
 
 ## Logs
 
@@ -100,6 +122,7 @@ make test        # vet (all OSes) + unit tests
 make hwtest      # read-only queries against the attached UPS
 make run         # service in the foreground
 make app         # dashboard window against a running service
+make tray        # tray icon against a running service
 make install     # macOS: build PowerPilot.app into ~/Applications and start the service
 make dist        # release archives for every OS into dist/ (VERSION=v1.2.3)
 ```

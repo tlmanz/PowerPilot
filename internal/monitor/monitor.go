@@ -153,6 +153,7 @@ type Monitor struct {
 	history      []Sample
 	events       []Event
 	pending      []Event
+	notes        []note // notifications, sent with the next update
 	pendSettings *settings.Settings
 	lastTest     *TestResult
 	testSawFault bool
@@ -160,6 +161,7 @@ type Monitor struct {
 	everOnline   bool
 	waitNoted    bool // "Waiting for the UPS" logged
 	batterySince time.Time
+	summaryAt    time.Time // last outage summary notification
 	lowNotified  bool
 	macShutdown  bool
 	alarmMuted   bool
@@ -537,7 +539,7 @@ func (m *Monitor) transitionsLocked(prev *ups.Status, st ups.Status, charge *flo
 	onBatt := func(s ups.Status) bool { return s.OnBattery }
 
 	if st.OnBattery && !was(onBatt) {
-		m.batterySince = now
+		m.batterySince, m.summaryAt = now, now
 		m.lowNotified, m.macShutdown = false, false
 		if !st.TestRunning {
 			m.addEventLocked(KindUtilityLost, "alert", "Utility power lost")
@@ -631,10 +633,14 @@ func (m *Monitor) policyLocked(st ups.Status, snap Snapshot, cfg settings.Settin
 		m.addEventLocked(KindLowBattery, "alert", msg)
 		m.notifyLocked("UPS battery low", msg)
 	}
+	elapsed := now.Sub(m.batterySince)
+	if now.Sub(m.summaryAt) >= SummaryEvery {
+		m.summaryAt = now
+		m.notifyLocked("On battery for "+Duration(elapsed), "")
+	}
 	if !cfg.ShutdownMac || m.macShutdown {
 		return
 	}
-	elapsed := now.Sub(m.batterySince)
 	if low || elapsed >= time.Duration(cfg.ShutdownAfterMinutes)*time.Minute {
 		m.macShutdown = true
 		m.addEventLocked(KindShutdown, "alert", fmt.Sprintf("Shutting down this Mac after %s on battery", round(elapsed)))
@@ -674,18 +680,34 @@ func (m *Monitor) Restore(events []Event) {
 	m.events = all[max(0, len(all)-maxEvents):]
 }
 
+type note struct{ title, msg string }
+
+// notifyLocked queues a notification. It goes out with the next update, so
+// it can summarize the reading that caused it.
 func (m *Monitor) notifyLocked(title, msg string) {
-	if m.actions.Notify == nil || !m.store.Get().Notify {
+	m.notes = append(m.notes, note{title, msg})
+}
+
+// sendNotesLocked posts the queued notifications, each with a summary of
+// the current reading.
+func (m *Monitor) sendNotesLocked() {
+	notes := m.notes
+	m.notes = nil
+	if len(notes) == 0 || m.actions.Notify == nil || !m.store.Get().Notify {
 		return
 	}
+	snap := m.snap
 	go func() {
-		if err := m.actions.Notify(title, msg); err != nil {
-			m.log.Warn("notification failed", "err", err)
+		for _, n := range notes {
+			if err := m.actions.Notify(n.title, WithSummary(n.msg, snap)); err != nil {
+				m.log.Warn("notification failed", "err", err)
+			}
 		}
 	}()
 }
 
 func (m *Monitor) broadcastLocked(sample *Sample) {
+	m.sendNotesLocked()
 	u := Update{Snapshot: m.snap, Sample: sample, Events: m.pending, Settings: m.pendSettings, LastTest: m.lastTest}
 	m.pending, m.pendSettings = nil, nil
 	for ch := range m.subs {

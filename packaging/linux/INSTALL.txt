@@ -14,8 +14,9 @@ PowerPilot for Linux
      mkdir -p ~/.local/bin && cp powerpilot ~/.local/bin/
      ~/.local/bin/powerpilot install
 
-   This adds a systemd user service (starts at login) and a "PowerPilot"
-   entry in your app menu.
+   This adds a systemd user service (starts at login), a "PowerPilot"
+   entry in your app menu, and a tray icon that starts with your desktop.
+   On GNOME, the tray icon needs the AppIndicator extension.
 
 3. Open the dashboard from the app menu, or run "powerpilot", or browse to
    http://127.0.0.1:8484

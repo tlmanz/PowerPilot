@@ -78,6 +78,7 @@ func TestGuard(t *testing.T) {
 		want                       int
 	}{
 		{"page loads", "GET", "/", okHost, "", "", "", 200},
+		{"menu-bar panel loads", "GET", "/tray.html", okHost, "", "", "", 200},
 		{"state loads via localhost", "GET", "/api/state", "localhost:8484", "", "", "", 200},
 		{"DNS rebinding host", "GET", "/api/state", "evil.example:8484", "", "", "", 403},
 		{"cross-site command", "POST", "/api/command", okHost, "https://evil.example", js, `{"id":"shutdown.cancel"}`, 403},

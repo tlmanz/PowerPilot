@@ -1,4 +1,4 @@
-.PHONY: build test hwtest run app install uninstall dist clean
+.PHONY: build test hwtest run app tray install uninstall dist clean
 
 VERSION ?= dev
 
@@ -22,6 +22,10 @@ run: build
 # Dashboard window against a running service.
 app: build
 	./bin/powerpilot app -no-install
+
+# Tray icon against a running service (exits if another PowerPilot shows it).
+tray: build
+	./bin/powerpilot tray
 
 # macOS: build PowerPilot.app into ~/Applications and start the service.
 install:

@@ -16,6 +16,7 @@ export function emptyState() {
     // ac | battery | bypass | fault | standby (outlets off) | test | offline
     mode: 'offline',
     status: 'Disconnected',
+    onBatterySec: null, // how long the current outage has lasted
     input: { voltage: null, frequency: null },
     output: { voltage: null, loadPercent: null, watts: null, va: null, powerFactor: null },
     battery: {
@@ -88,6 +89,7 @@ export function fromLive(device, snap, settings, lastTest) {
   const mode = { line: 'ac', battery: 'battery', test: 'test', fault: 'fault', standby: 'standby' }[snap.mode] || 'ac';
   s.mode = mode === 'ac' && st.avr_active && !st.line_interactive ? 'bypass' : mode;
   s.status = statusLabel(s.mode);
+  s.onBatterySec = st.on_battery ? snap.on_battery_sec ?? 0 : null;
   s.avr = st.avr_active && st.line_interactive;
   s.input = { voltage: st.input_voltage, frequency: st.frequency };
   s.output = {

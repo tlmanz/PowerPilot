@@ -64,3 +64,12 @@ func PIDFile() string {
 	}
 	return filepath.Join(dir, "service.pid")
 }
+
+// trayFile is where the process showing the tray icon records its ID.
+func trayFile() string {
+	dir, err := ConfigDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, "tray.pid")
+}

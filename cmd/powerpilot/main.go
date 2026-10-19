@@ -1,6 +1,7 @@
 // Command powerpilot is the PowerPilot UPS monitor. "app" (the default) shows
 // the dashboard, installing the background service first if it isn't running;
-// "serve" runs that service; "install" and "uninstall" manage it.
+// "tray" shows the UPS in the system tray; "serve" runs the service;
+// "install" and "uninstall" manage it.
 package main
 
 import (
@@ -22,13 +23,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tlmanz/PowerPilot/internal/app"
 	"github.com/tlmanz/PowerPilot/internal/cloud"
 	"github.com/tlmanz/PowerPilot/internal/logbook"
 	"github.com/tlmanz/PowerPilot/internal/monitor"
 	"github.com/tlmanz/PowerPilot/internal/service"
 	"github.com/tlmanz/PowerPilot/internal/settings"
 	"github.com/tlmanz/PowerPilot/internal/system"
+	"github.com/tlmanz/PowerPilot/internal/tray"
 	"github.com/tlmanz/PowerPilot/internal/update"
 	"github.com/tlmanz/PowerPilot/internal/ups"
 	"github.com/tlmanz/PowerPilot/internal/web"
@@ -40,6 +41,7 @@ const defaultAddr = "127.0.0.1:8484"
 var version = "dev"
 
 const usage = `usage: powerpilot [app]          open the dashboard (starts the service if needed)
+       powerpilot tray           show the UPS in the system tray (menu bar on macOS)
        powerpilot serve [flags]  run the service in the foreground
        powerpilot install        start the service at login
        powerpilot uninstall      stop the service and remove it from login
@@ -54,6 +56,8 @@ func main() {
 	switch cmd {
 	case "app":
 		openWindow(args)
+	case "tray":
+		showTray(args)
 	case "serve":
 		serve(args)
 	case "install":
@@ -222,6 +226,7 @@ func openWindow(args []string) {
 	}
 	fs.Parse(kept)
 
+	claimed := claimTray() // before the install, whose tray login item would claim it
 	if !*noInstall && !reachable(*url) {
 		if err := installService(); err != nil {
 			system.Alert("PowerPilot", "Could not start the PowerPilot service: "+err.Error())
@@ -231,7 +236,23 @@ func openWindow(args []string) {
 			}
 		}
 	}
-	app.Run(*url)
+	dashboard(*url, claimed)
+}
+
+func showTray(args []string) {
+	fs := flag.NewFlagSet("tray", flag.ExitOnError)
+	url := fs.String("url", "http://"+defaultAddr, "dashboard URL")
+	fs.Parse(args)
+	runTray(*url)
+}
+
+// trayWait is how long to wait for the tray icon: a tray restarted after an
+// update may start before the old one is gone.
+func trayWait() time.Duration {
+	if tray.Restarted() {
+		return 5 * time.Second
+	}
+	return 0
 }
 
 func installService() error {

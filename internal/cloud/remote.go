@@ -54,6 +54,7 @@ type Remote struct {
 	lostAt    time.Time // when the UPS went out of sight
 	lostNoted bool
 	onBattery time.Time // when this outage started, as far as we know
+	summaryAt time.Time // last outage summary notification
 	shutDown  bool      // this computer's shutdown already started
 	subs      map[chan monitor.Update]struct{}
 }
@@ -239,6 +240,11 @@ func (r *Remote) checkLocked(now time.Time) {
 	}
 	if r.onBattery.IsZero() {
 		r.onBattery = now.Add(-time.Duration(r.snap.OnBatterySec * float64(time.Second)))
+		r.summaryAt = now
+	}
+	if now.Sub(r.summaryAt) >= monitor.SummaryEvery {
+		r.summaryAt = now
+		r.notify("On battery for "+monitor.Duration(now.Sub(r.onBattery)), "")
 	}
 	cfg := r.store.Get()
 	if !cfg.ShutdownMac || r.shutDown {
@@ -295,10 +301,12 @@ func (r *Remote) notifyEvent(e monitor.Event, now time.Time) {
 	r.notify(n.title, r.c.device+": "+text)
 }
 
+// notify pops up a notification with a summary of the UPS's reading. r.mu is held.
 func (r *Remote) notify(title, msg string) {
 	if r.actions.Notify == nil || !r.store.Get().Notify {
 		return
 	}
+	msg = monitor.WithSummary(msg, r.shownLocked())
 	go func() {
 		if err := r.actions.Notify(title, msg); err != nil {
 			r.log.Warn("notification failed", "err", err)

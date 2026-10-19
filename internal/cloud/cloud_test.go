@@ -122,7 +122,7 @@ func TestRemoteNotifiesAndShutsDown(t *testing.T) {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	srv := fakeServer(t, func(w http.ResponseWriter, flush func()) {
 		// Mains power fails; two minutes on, still on battery.
-		fmt.Fprintf(w, `data: {"snapshot":{"connected":true,"mode":"battery","battery_state":"discharging","on_battery_sec":120,"status":{"on_battery":true}},"events":[{"id":"e1","time":%q,"kind":"utility_lost","level":"alert","message":"Utility power lost"}],"online":true}`+"\n\n", now)
+		fmt.Fprintf(w, `data: {"snapshot":{"connected":true,"mode":"battery","battery_state":"discharging","on_battery_sec":120,"charge":87,"runtime_min":22.4,"load_w":372,"status":{"on_battery":true,"load_percent":31}},"events":[{"id":"e1","time":%q,"kind":"utility_lost","level":"alert","message":"Utility power lost"}],"online":true}`+"\n\n", now)
 		flush()
 	})
 	notes := make(chan string, 10)
@@ -137,7 +137,8 @@ func TestRemoteNotifiesAndShutsDown(t *testing.T) {
 	defer close(done)
 	go r.Run(done)
 
-	want := "Running on battery|home: Mains power was lost. The UPS is powering your equipment."
+	want := "Running on battery|home: Mains power was lost. The UPS is powering your equipment.\n" +
+		"Battery 87.0%, about 22 min left · Load 31.0% (372 W)"
 	for got := ""; got != want; {
 		select {
 		case got = <-notes:
@@ -188,6 +189,35 @@ func TestRemoteOutOfSight(t *testing.T) {
 	}
 	if st := r.State(); st.Snapshot.Connected || !strings.Contains(st.Snapshot.Error, "server") {
 		t.Fatalf("snapshot %+v", st.Snapshot)
+	}
+}
+
+func TestRemoteSummaryDuringOutage(t *testing.T) {
+	notes := make(chan string, 10)
+	r := NewRemote(Config{URL: "http://127.0.0.1:1", Device: "home", Token: "pp_t"}, newStore(t, nil),
+		monitor.Actions{Notify: func(title, msg string) error { notes <- title + "|" + msg; return nil }}, "v9", quiet)
+	start := time.Now()
+	r.mu.Lock()
+	r.reachable, r.online = true, true
+	r.snap = monitor.Snapshot{Connected: true, Mode: "battery", OnBatterySec: 120, Charge: new(64.0), RuntimeMin: new(14.2), LoadW: 372,
+		Status: &ups.Status{OnBattery: true, LoadPercent: 31}}
+	r.checkLocked(start)
+	r.checkLocked(start.Add(monitor.SummaryEvery - time.Second))
+	r.checkLocked(start.Add(monitor.SummaryEvery))
+	r.mu.Unlock()
+	want := "On battery for 7 min|Battery 64.0%, about 14 min left · Load 31.0% (372 W)"
+	select {
+	case got := <-notes:
+		if got != want {
+			t.Fatalf("note %q, want %q", got, want)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no summary notification")
+	}
+	select {
+	case got := <-notes:
+		t.Fatalf("unexpected note %q", got)
+	case <-time.After(100 * time.Millisecond):
 	}
 }
 

@@ -11,15 +11,17 @@ import (
 
 // A per-user Run entry starts the service at sign-in without admin rights.
 const (
-	runKey  = `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
-	runName = "PowerPilot"
+	runKey   = `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+	runName  = "PowerPilot"
+	trayName = "PowerPilot Tray"
 
 	createNoWindow  = 0x08000000
 	detachedProcess = 0x00000008
 	newProcessGroup = 0x00000200
 )
 
-// Install registers "exe serve" to run at sign-in and starts it now.
+// Install registers "exe serve" and the tray icon to run at sign-in and
+// starts them now.
 func Install(exe string, _ []byte) error {
 	value := fmt.Sprintf(`"%s" serve`, exe)
 	if err := reg("add", runKey, "/v", runName, "/t", "REG_SZ", "/d", value, "/f"); err != nil {
@@ -28,18 +30,38 @@ func Install(exe string, _ []byte) error {
 	stopRunning()
 	cmd := exec.Command(exe, "serve")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: detachedProcess | newProcessGroup}
-	return cmd.Start()
-}
-
-// Refresh has nothing to do on Windows: the Run entry points at the same exe.
-func Refresh(string, []byte) error { return nil }
-
-// Uninstall removes the Run entry and stops the running service.
-func Uninstall() error {
-	if err := reg("delete", runKey, "/v", runName, "/f"); err != nil && !strings.Contains(err.Error(), "unable to find") {
+	if err := cmd.Start(); err != nil {
 		return err
 	}
+	stopTray()
+	addTray(exe)
+	return nil
+}
+
+// Refresh adds the tray icon's Run entry, which builds before it lacked,
+// after an update, and starts the icon.
+func Refresh(exe string, _ []byte) error {
+	addTray(exe)
+	return nil
+}
+
+// addTray runs the tray icon at sign-in and starts it now. It's an extra:
+// failures leave the service as it is.
+func addTray(exe string) {
+	if reg("add", runKey, "/v", trayName, "/t", "REG_SZ", "/d", fmt.Sprintf(`"%s" tray`, exe), "/f") == nil {
+		StartTray(exe)
+	}
+}
+
+// Uninstall removes the Run entries and stops the service and the tray icon.
+func Uninstall() error {
+	for _, name := range []string{runName, trayName} {
+		if err := reg("delete", runKey, "/v", name, "/f"); err != nil && !strings.Contains(err.Error(), "unable to find") {
+			return err
+		}
+	}
 	stopRunning()
+	stopTray()
 	return nil
 }
 
