@@ -1,22 +1,31 @@
 PowerPilot is a desktop dashboard and background service for USB UPSes that speak the Megatec/Voltronic protocol (USB ID `0665:5161`). It shows live power, battery and load data, logs power events, sends notifications, and controls the UPS (alarm, self-test, outlet shutdown and restart). It can also show a UPS from a PowerPilot server, from anywhere.
 
-## What's new in v1.1.0
+## What's new in v1.2.0
 
-**Cloud.** **Settings > Cloud** connects PowerPilot to a PowerPilot server (`powerpilot-server`). Paste the pairing link from the server's admin page, then choose a mode:
+**Tray icon.** PowerPilot now sits in the menu bar (macOS) or the system tray (Windows, Linux), from login.
 
-- **Remote: see a UPS from anywhere.**
-  - No USB needed. PowerPilot shows a UPS from the server, for example one an ESP32 reports, with the same dashboard, controls, settings and logs.
-  - Desktop notifications work as with USB: power lost and restored, low battery, faults and overload. If the UPS is out of contact for 2 minutes, you're told.
-  - *Shut down this Mac during a power outage* works too, as long as this computer can still reach the server.
-- **Publish: share this computer's UPS.**
-  - PowerPilot keeps its USB UPS and also sends it to the server, so the phone app can see it and control it.
-  - While the server can't be reached, events and readings wait (up to a day) and go up once it's back.
-- **The token stays private.** It's saved in `cloud.json`, readable by you only, and never shown again.
-- **Changing the mode restarts the service.**
-- **Cloud is off by default,** so nothing changes until you turn it on.
+- **The icon is a battery** filled to the charge, with a bolt on mains power and "!" for a low battery, an overload or a fault. During an outage, macOS shows the charge beside it.
+- **macOS:** click the icon for a panel showing:
+  - the battery, with the runtime left;
+  - load, input, output and battery voltage;
+  - a **Mute** button while the alarm sounds;
+  - **Summary** and **Open Dashboard**.
+
+  It follows light and dark mode. Right-click for a short menu.
+- **Windows and Linux:** a menu with the same reading, each line with an icon. Choose one to open the dashboard. On Windows, a click on the icon opens the dashboard.
+- **On macOS, closing the dashboard window leaves PowerPilot in the menu bar.** **Quit** removes the icon until the next login, or until you open the app. The service keeps watching the UPS either way.
+- **Linux** needs a tray that supports StatusNotifierItem (KDE, Xfce, Cinnamon and others). On GNOME, install the AppIndicator extension.
+
+**Notifications with a summary.**
+
+- **Every notification ends with the reading,** e.g. "Battery 87.0%, about 22 min left · Load 31.0% (372 W)".
+- **During an outage, a summary repeats every 5 minutes**, so you can follow the charge.
+- **Show Summary** in the tray posts the reading on request.
+- **They follow the *Show notifications* setting**, with USB and in every Cloud mode.
 
 ### Earlier
 
+- **v1.1.0:** Cloud: Remote mode shows a UPS from a PowerPilot server; Publish mode shares this computer's UPS with it.
 - **v1.0.4:** logs kept on disk, a file per day, with CSV export; choose how long they're kept; Recent Events survives restarts.
 - **v1.0.3:** update PowerPilot from Settings; the Linux window always shows the PowerPilot icon; the header shows the version.
 - **v1.0.2:** the dashboard window opens at full size on Linux and Windows, and remembers its size.
@@ -24,7 +33,7 @@ PowerPilot is a desktop dashboard and background service for USB UPSes that spea
 
 ## Upgrading
 
-**From v1.0.3 or v1.0.4:** open **Settings**, then **Check for updates** and **Update now**. PowerPilot restarts on the new version by itself.
+**From v1.0.3 or later:** open **Settings**, then **Check for updates** and **Update now**. PowerPilot restarts on the new version by itself. The tray icon appears right away on macOS and Windows. On Linux it appears at the next login, or when you open PowerPilot.
 
 **From an earlier version**, upgrade by hand. The background service keeps running the old version until it restarts, so:
 
