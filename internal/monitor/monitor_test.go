@@ -172,6 +172,47 @@ func TestSelfTestResult(t *testing.T) {
 	}
 }
 
+func TestSelfTestMeasured(t *testing.T) {
+	m, _ := newTestMonitor(t, settings.Default())
+	before := onLine
+	before.BatteryVoltage, before.LoadPercent = 27.1, 8
+	m.update(before)
+	inTest := onLine
+	inTest.TestRunning, inTest.BatteryVoltage, inTest.LoadPercent = true, 26.04, 9
+	m.update(inTest)
+	m.testStart = m.testStart.Add(-10 * time.Second) // as if the test ran 10 s
+	inTest.BatteryVoltage, inTest.LoadPercent = 25.93, 7
+	m.update(inTest)
+	m.update(before)
+
+	evs := m.State().Events
+	var tests []Event
+	for _, e := range evs {
+		if e.Test != nil {
+			tests = append(tests, e)
+		}
+	}
+	want := SelfTest{Result: "passed", Seconds: 10, Load: 9, VoltsBefore: 27.1, VoltsLow: 25.9}
+	if len(tests) != 1 || *tests[0].Test != want || tests[0] != evs[len(evs)-1] {
+		t.Fatalf("measured %+v in events %+v", tests, evs)
+	}
+	if e := tests[0]; e.Kind != KindSelfTest || e.Level != "good" || e.Message != "UPS self-test completed (passed)" {
+		t.Errorf("ending event %+v", e)
+	}
+
+	// A failed test: the start comes from the poll before, still on mains.
+	m.update(inTest)
+	failing := inTest
+	failing.BatteryLow, failing.BatteryVoltage = true, 23.0
+	m.update(failing)
+	m.update(before)
+	last := m.State().Events[len(m.State().Events)-1]
+	if last.Level != "alert" || last.Message != "UPS self-test failed" || last.Test == nil ||
+		last.Test.Result != "failed" || last.Test.VoltsBefore != 27.1 || last.Test.VoltsLow != 23 || last.Test.Load != 7 {
+		t.Fatalf("failed test event %+v (%+v)", last, last.Test)
+	}
+}
+
 type fakeRecorder struct {
 	events []Event
 	modes  []string

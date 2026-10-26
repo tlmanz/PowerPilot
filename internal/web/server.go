@@ -65,7 +65,8 @@ type Options struct {
 	WindowFile string // where the dashboard window reports its size
 	Updater    Updater
 	Logs       Logs
-	Cloud      Cloud // the Cloud setting; nil leaves it out
+	Cloud      Cloud   // the Cloud setting; nil leaves it out
+	Battery    Battery // battery health from the server: Remote mode only
 }
 
 type server struct {
@@ -106,6 +107,9 @@ func Handler(mon Source, listenAddr string, opt Options) (http.Handler, error) {
 	mux.HandleFunc("GET /api/logs/export", s.logExport)
 	mux.HandleFunc("GET /api/cloud", s.getCloud)
 	mux.HandleFunc("PUT /api/cloud", s.putCloud)
+	mux.HandleFunc("GET /api/battery", s.battery)
+	mux.HandleFunc("PUT /api/battery", s.battery)
+	mux.HandleFunc("POST /api/battery/replaced", s.battery)
 	return s.guard(mux), nil
 }
 

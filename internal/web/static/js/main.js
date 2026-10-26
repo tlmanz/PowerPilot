@@ -10,6 +10,7 @@ import { renderCharts, seedCharts, updateCharts } from './ui/charts.js';
 import { updateControls, wireControls } from './ui/controls.js';
 import { wireLogs } from './ui/logs.js';
 import { wireCloud } from './ui/cloud.js';
+import { updateBatteryView, wireBattery } from './ui/battery.js';
 
 const params = new URLSearchParams(location.search);
 const source = params.get('source') === 'mock'
@@ -33,12 +34,14 @@ export function updateUPSState(next) {
   updateAlarm(state.alarm, state);
   updateControls(state);
   updateCharts(state);
+  updateBatteryView();
   document.body.classList.toggle('stale', !linkUp);
 }
 
 wireControls(source, getState);
 wireLogs(source, getState);
 wireCloud();
+wireBattery(source, getState);
 updateUPSState(state);
 source.start({
   state: updateUPSState,

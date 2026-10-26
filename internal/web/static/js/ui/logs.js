@@ -1,6 +1,6 @@
 // Logs dialog: events and per-minute readings kept on disk, one day at a
 // time, with a CSV export for a range of days.
-import { $, clock, num, setText } from './core.js';
+import { $, clock, num, setText, ymd } from './core.js';
 
 const MODES = { line: 'Mains', battery: 'Battery', test: 'Self-test', standby: 'Standby', fault: 'Fault' };
 
@@ -9,8 +9,6 @@ let days = []; // [{date, events, readings}], newest first
 let kind = 'events';
 let shown = ''; // the date on screen, so stale replies are ignored
 
-const pad = (n) => String(n).padStart(2, '0');
-const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const daysAgo = (n) => {
   const d = new Date();
   d.setDate(d.getDate() - n);

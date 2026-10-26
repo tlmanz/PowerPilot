@@ -2,6 +2,7 @@ package logbook
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"os"
@@ -39,12 +40,52 @@ func TestReadingsAveragePerMinute(t *testing.T) {
 		t.Fatalf("readings = %+v, %v; want 2 minutes", rs, err)
 	}
 	r := rs[0]
+	// 30 s since the sample before, but a gap in polling counts as 5 s on battery.
 	if r.T != base.UnixMilli() || r.Mode != "battery" || r.In != 215 || r.InMin != 180 || r.InMax != 235 ||
-		r.Load != 30 || r.LoadMax != 40 || r.Charge == nil || *r.Charge != 95 {
+		r.Load != 30 || r.LoadMax != 40 || r.Charge == nil || *r.Charge != 95 || r.BattS != 5 {
 		t.Errorf("first minute = %+v (charge %v)", r, *r.Charge)
 	}
-	if rs[1].Mode != "line" || rs[1].Freq != 50.1 || rs[1].Charge != nil {
+	if rs[1].Mode != "line" || rs[1].Freq != 50.1 || rs[1].Charge != nil || rs[1].BattS != 0 {
 		t.Errorf("second minute = %+v", rs[1])
+	}
+}
+
+func TestBatterySeconds(t *testing.T) {
+	base := time.Date(2026, 10, 15, 9, 30, 0, 0, time.Local).UnixMilli()
+	var m Minutes
+	var got []Reading
+	add := func(sec float64, mode string) {
+		if r, ok := m.Add(monitor.Sample{T: base + int64(sec*1000)}, mode); ok {
+			got = append(got, r)
+		}
+	}
+	// Minute 0: 6 s on battery polled every 2 s (the line poll after it adds
+	// nothing), then a poll 24 s late that counts only 5 s.
+	add(0, "line")
+	add(2, "battery")
+	add(4, "battery")
+	add(6, "test")
+	add(8, "line")
+	add(32, "battery")
+	add(56, "line")
+	// Minute 1: on battery throughout, polled every 4 s from 56 s: 63.5 s of
+	// polls, capped at 60.
+	for s := 60.0; s <= 116; s += 4 {
+		add(s, "battery")
+	}
+	add(119.5, "battery")
+	add(120, "line") // ends minute 1
+	add(180, "line") // ends minute 2
+	if len(got) != 3 {
+		t.Fatalf("readings %+v", got)
+	}
+	if got[0].BattS != 11 || got[1].BattS != 60 || got[2].BattS != 0 {
+		t.Errorf("batt_s = %d, %d, %d; want 11, 60, 0", got[0].BattS, got[1].BattS, got[2].BattS)
+	}
+	first, _ := json.Marshal(got[0])
+	last, _ := json.Marshal(got[2])
+	if !strings.Contains(string(first), `"batt_s":11`) || strings.Contains(string(last), "batt_s") {
+		t.Errorf("JSON: %s, %s", first, last)
 	}
 }
 

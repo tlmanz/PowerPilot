@@ -94,6 +94,17 @@ type Event struct {
 	Kind    string    `json:"kind"`
 	Level   string    `json:"level"` // info, good, warn, alert
 	Message string    `json:"message"`
+	Test    *SelfTest `json:"test,omitempty"` // only on the event that ends a self-test
+}
+
+// SelfTest is what a self-test measured. powerpilot-server works out the
+// battery's health from it (PowerPilotHardware docs/cloud.md, "Battery health").
+type SelfTest struct {
+	Result      string  `json:"result"` // passed, failed
+	Seconds     int     `json:"seconds"`
+	Load        float64 `json:"load"`         // the highest during it, %
+	VoltsBefore float64 `json:"volts_before"` // on the last poll before it, on mains
+	VoltsLow    float64 `json:"volts_low"`    // the lowest during it
 }
 
 type TestResult struct {
@@ -157,6 +168,14 @@ type Monitor struct {
 	pendSettings *settings.Settings
 	lastTest     *TestResult
 	testSawFault bool
+
+	// The running self-test's measurements, as the ESP32 takes them.
+	testStart  time.Time
+	testBefore float64 // battery V on the poll before it
+	testLow    float64
+	testMax    float64   // the highest load, %
+	nextTest   *SelfTest // goes on the next event: the one that ends the test
+
 	failures     int
 	everOnline   bool
 	waitNoted    bool // "Waiting for the UPS" logged
@@ -595,19 +614,28 @@ func (m *Monitor) transitionsLocked(prev *ups.Status, st ups.Status, charge *flo
 	// Battery tests: a test that ran without raising battery-low or a fault passed.
 	if st.TestRunning {
 		if !was(func(s ups.Status) bool { return s.TestRunning }) {
+			// The poll before was on mains: the voltage the test's drop starts from.
+			m.testStart, m.testBefore, m.testLow, m.testMax = now, st.BatteryVoltage, st.BatteryVoltage, st.LoadPercent
+			if prev != nil {
+				m.testBefore = prev.BatteryVoltage
+			}
 			m.addEventLocked(KindSelfTest, "info", "Battery self-test started")
 			if m.lastTest == nil || m.lastTest.Result != "running" {
 				m.lastTest = &TestResult{Kind: "test", Started: now, Result: "running"}
 				m.testSawFault = false
 			}
 		}
+		m.testLow, m.testMax = min(m.testLow, st.BatteryVoltage), max(m.testMax, st.LoadPercent)
 		if st.BatteryLow || st.Fault {
 			m.testSawFault = true
 		}
 	}
 	if !st.TestRunning && was(func(s ups.Status) bool { return s.TestRunning }) && m.lastTest != nil && m.lastTest.Result == "running" {
 		m.lastTest.Ended = &now
+		m.nextTest = &SelfTest{Result: "passed", Seconds: int(math.Round(now.Sub(m.testStart).Seconds())),
+			Load: math.Round(m.testMax), VoltsBefore: round1(m.testBefore), VoltsLow: round1(m.testLow)}
 		if m.testSawFault {
+			m.nextTest.Result = "failed"
 			m.lastTest.Result = "failed"
 			m.addEventLocked(KindSelfTest, "alert", "UPS self-test failed")
 			m.notifyLocked("UPS self-test failed", "The battery reported low or a fault during the test.")
@@ -659,7 +687,8 @@ func (m *Monitor) policyLocked(st ups.Status, snap Snapshot, cfg settings.Settin
 }
 
 func (m *Monitor) addEventLocked(kind, level, msg string) {
-	e := Event{Time: time.Now(), Kind: kind, Level: level, Message: msg}
+	e := Event{Time: time.Now(), Kind: kind, Level: level, Message: msg, Test: m.nextTest}
+	m.nextTest = nil
 	m.log.Info("event", "kind", kind, "level", level, "msg", msg)
 	m.events = append(m.events, e)
 	if len(m.events) > maxEvents {
@@ -747,6 +776,8 @@ func batteryState(st ups.Status, charge *float64, lowPct int) string {
 	}
 	return "charging"
 }
+
+func round1(v float64) float64 { return math.Round(v*10) / 10 }
 
 func round(d time.Duration) string {
 	if d < time.Minute {

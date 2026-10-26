@@ -2,8 +2,10 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/tlmanz/PowerPilot/internal/cloud"
@@ -15,7 +17,38 @@ type Cloud interface {
 	Apply(ctx context.Context, r cloud.Request) (cloud.Status, error)
 }
 
-var errNoCloud = errors.New("the Cloud setting isn't available here")
+// Battery is the UPS's battery health on a powerpilot-server, which works it
+// out from the UPS's readings (cloud.Remote). path is /battery or
+// /battery/replaced; bodies and replies pass through unchanged.
+type Battery interface {
+	Battery(ctx context.Context, method, path string, body []byte) (status int, reply []byte, err error)
+}
+
+var (
+	errNoCloud   = errors.New("the Cloud setting isn't available here")
+	errNoBattery = errors.New("battery health comes from powerpilot-server: switch Cloud to Remote mode")
+)
+
+// battery relays GET and PUT /api/battery and POST /api/battery/replaced to
+// the server.
+func (s *server) battery(w http.ResponseWriter, r *http.Request) {
+	if s.Battery == nil {
+		writeError(w, http.StatusConflict, errNoBattery)
+		return
+	}
+	var body json.RawMessage
+	if r.Method != http.MethodGet && !decode(w, r, &body) {
+		return
+	}
+	status, reply, err := s.Battery.Battery(r.Context(), r.Method, strings.TrimPrefix(r.URL.Path, "/api"), body)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	w.Write(reply)
+}
 
 func (s *server) getCloud(w http.ResponseWriter, r *http.Request) {
 	if s.Cloud == nil {

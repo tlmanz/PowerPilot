@@ -90,6 +90,7 @@ PowerPilot can also work with a PowerPilot server (`powerpilot-server`, in the P
   - If the UPS is out of sight for 2 minutes, you're told.
   - "Shut down this Mac during a power outage" works too, as long as this computer can still reach the server.
 - **Publish mode buffers:** while the server can't be reached, PowerPilot keeps events and readings, up to a day of them, and sends them when it's back.
+- **Battery health:** the server works out the battery's health, cycles, outages and voltage-drop trend from what the UPS sends: how long each minute ran on battery, and what each self-test measured. Publish mode sends both. In Remote mode, **Battery Status > Health** shows the result, with the installed date, the monthly self-test and "Battery replaced".
 - **The token stays out of the dashboard:** the setting is saved in `cloud.json` next to `settings.json`, readable by you only, and the token is never shown again.
 - **Changing the mode restarts the service.**
 
@@ -165,7 +166,7 @@ The UI in `internal/web/static/` is plain HTML, CSS and ES modules. Every compon
 | `addEvent(event)` | Adds one row to Recent Events |
 | `updateCharts(state)` | The five trend charts |
 
-**Data sources** live in `js/sources/` and share one interface: `start`, `command`, `saveSettings` and `refresh`.
+**Data sources** live in `js/sources/` and share one interface: `start`, `command`, `saveSettings`, `refresh` and `battery`.
 - `live.js` reads the local service through `/api/state`, server-sent events and `/api/command`.
 - `mock.js` simulates a UPS. Open `http://127.0.0.1:8484/?source=mock`, optionally with `&scenario=battery|bypass|fault`.
 - To use another backend (WebSocket, Web Serial, …), add a source with the same interface. No UI changes needed.

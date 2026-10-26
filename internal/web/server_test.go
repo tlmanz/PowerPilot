@@ -2,15 +2,18 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/tlmanz/PowerPilot/internal/cloud"
 	"github.com/tlmanz/PowerPilot/internal/logbook"
 	"github.com/tlmanz/PowerPilot/internal/monitor"
 	"github.com/tlmanz/PowerPilot/internal/settings"
@@ -167,5 +170,90 @@ func TestLogExport(t *testing.T) {
 	want := "time,level,kind,message\n2026-10-14 21:05:00,alert,utility_lost,Utility power lost\n"
 	if got := w.Body.String(); got != want {
 		t.Errorf("CSV =\n%s\nwant\n%s", got, want)
+	}
+}
+
+const report = `{"installed":"2025-03-01","age_days":604,"counting_since":"2026-10-26T15:40:00Z","cycles":1.3,"ah":11.7,"battery_ah":9,"outages":4,"battery_seconds":3720,"tests":[{"time":"2026-10-26T15:41:00Z","result":"passed","seconds":10,"load":9,"volts_before":27.1,"volts_low":25.8}],"health":"good","reasons":[],"auto_test":true}`
+
+// In Remote mode the battery routes reach the server's for the UPS, with the
+// bodies and replies passed through unchanged.
+func TestBatteryRelay(t *testing.T) {
+	var mu sync.Mutex
+	got := map[string]string{}
+	mux := http.NewServeMux()
+	for _, route := range []string{"GET /api/devices/home/battery", "PUT /api/devices/home/battery", "POST /api/devices/home/battery/replaced"} {
+		mux.HandleFunc(route, func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Authorization") != "Bearer pp_t" {
+				http.Error(w, `{"ok":false,"error":"missing or unknown token"}`, http.StatusUnauthorized)
+				return
+			}
+			b, _ := io.ReadAll(r.Body)
+			mu.Lock()
+			got[route] = string(b)
+			mu.Unlock()
+			if strings.Contains(string(b), "tomorrow") {
+				w.WriteHeader(http.StatusBadRequest)
+				fmt.Fprint(w, `{"ok":false,"error":"installed must be a date: YYYY-MM-DD"}`)
+				return
+			}
+			fmt.Fprint(w, report)
+		})
+	}
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	store, err := settings.Open(filepath.Join(t.TempDir(), "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rem := cloud.NewRemote(cloud.Config{Mode: cloud.ModeRemote, URL: srv.URL, Device: "home", Token: "pp_t"}, store, monitor.Actions{}, "v9", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	opt := testOptions(t, &fakeUpdater{})
+	opt.Battery = rem
+	h, err := Handler(rem, "127.0.0.1:8484", opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const host, origin, js = "127.0.0.1:8484", "http://127.0.0.1:8484", "application/json"
+	cases := []struct {
+		name, method, path, origin, body string
+		want                             int
+		reply, sent                      string // what the dashboard gets, and what the server got
+	}{
+		{"report", "GET", "/api/battery", "", "", 200, report, ""},
+		{"settings", "PUT", "/api/battery", origin, `{"installed":"2025-03-01","auto_test":true}`, 200, report, `{"installed":"2025-03-01","auto_test":true}`},
+		{"replaced", "POST", "/api/battery/replaced", origin, `{"installed":"2026-10-26"}`, 200, report, `{"installed":"2026-10-26"}`},
+		{"server's error", "PUT", "/api/battery", origin, `{"installed":"tomorrow"}`, 400, `{"ok":false,"error":"installed must be a date: YYYY-MM-DD"}`, `{"installed":"tomorrow"}`},
+		{"not JSON", "POST", "/api/battery/replaced", origin, `installed=2026-10-26`, 400, "", ""},
+		{"cross-site", "POST", "/api/battery/replaced", "https://evil.example", `{"installed":"2026-10-26"}`, 403, "", ""},
+	}
+	for _, c := range cases {
+		mu.Lock()
+		clear(got)
+		mu.Unlock()
+		w := do(h, c.method, c.path, host, c.origin, js, c.body)
+		if w.Code != c.want || (c.reply != "" && w.Body.String() != c.reply) {
+			t.Errorf("%s: got %d %s", c.name, w.Code, w.Body.String())
+		}
+		mu.Lock()
+		sent := got[c.method+" /api/devices/home"+strings.TrimPrefix(c.path, "/api")]
+		mu.Unlock()
+		if sent != c.sent {
+			t.Errorf("%s: the server got %q, want %q", c.name, sent, c.sent)
+		}
+	}
+}
+
+// Off and Publish modes have no server to ask.
+func TestBatteryOutsideRemote(t *testing.T) {
+	h := newTestHandler(t)
+	for _, c := range []struct{ method, path, body string }{
+		{"GET", "/api/battery", ""},
+		{"PUT", "/api/battery", `{"auto_test":true}`},
+		{"POST", "/api/battery/replaced", `{"installed":"2026-10-26"}`},
+	} {
+		w := do(h, c.method, c.path, "127.0.0.1:8484", "http://127.0.0.1:8484", "application/json", c.body)
+		if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), `"error":"battery health comes from powerpilot-server: switch Cloud to Remote mode"`) {
+			t.Errorf("%s %s: got %d %s", c.method, c.path, w.Code, w.Body.String())
+		}
 	}
 }

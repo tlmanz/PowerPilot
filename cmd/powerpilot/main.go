@@ -123,14 +123,15 @@ func serve(args []string) {
 	}
 	actions := monitor.Actions{Notify: system.Notify, ShutDown: system.ShutDown}
 	var (
-		src  web.Source
-		logs web.Logs
-		link cloud.Link
-		run  []func(<-chan struct{}) // background loops, until shutdown
+		src     web.Source
+		logs    web.Logs
+		link    cloud.Link
+		battery web.Battery             // from the server, so Remote mode only
+		run     []func(<-chan struct{}) // background loops, until shutdown
 	)
 	if cloudCfg.Mode == cloud.ModeRemote {
 		rem := cloud.NewRemote(cloudCfg, store, actions, version, log)
-		src, logs, link = rem, rem.Logs(), rem
+		src, logs, link, battery = rem, rem.Logs(), rem, rem
 		run = append(run, rem.Run)
 		log.Info("cloud: remote mode", "server", cloudCfg.URL, "device", cloudCfg.Device)
 	} else {
@@ -171,6 +172,7 @@ func serve(args []string) {
 		Updater:    update.New(version, exe),
 		Logs:       logs,
 		Cloud:      cloud.NewSettings(cloudPath, cloudCfg, link, func() monitor.Device { return device }),
+		Battery:    battery,
 	})
 	if err != nil {
 		log.Error("bad listen address", "err", err)

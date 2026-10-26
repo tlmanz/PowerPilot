@@ -42,6 +42,7 @@ type Reading struct {
 	Batt    float64  `json:"batt"`
 	Freq    float64  `json:"freq"`
 	Charge  *float64 `json:"charge,omitempty"`
+	BattS   int      `json:"batt_s,omitempty"` // seconds in battery or test mode, for the server's battery health
 }
 
 // Day is one date that has logs.
@@ -59,8 +60,8 @@ type Book struct {
 	prune     chan struct{}
 
 	// Owned by Run.
-	files map[string]*dayFile // by kind
-	acc   minute
+	files   map[string]*dayFile // by kind
+	minutes Minutes
 }
 
 type dayFile struct {
@@ -148,24 +149,16 @@ func (b *Book) write(v any) {
 	case monitor.Event:
 		b.append(eventsDir, v.Time, v)
 	case sample:
-		start := v.T - v.T%60_000
-		if b.acc.n > 0 && b.acc.start != start {
-			b.flushMinute()
+		if r, ok := b.minutes.Add(v.Sample, v.mode); ok {
+			b.append(readingsDir, time.UnixMilli(r.T), r)
 		}
-		if b.acc.n == 0 {
-			b.acc.start = start
-		}
-		b.acc.add(v.Sample, v.mode)
 	}
 }
 
 func (b *Book) flushMinute() {
-	if b.acc.n == 0 {
-		return
+	if r, ok := b.minutes.flush(); ok {
+		b.append(readingsDir, time.UnixMilli(r.T), r)
 	}
-	r := b.acc.reading()
-	b.append(readingsDir, time.UnixMilli(r.T), r)
-	b.acc = minute{}
 }
 
 // append adds v as a JSON line to the kind's file for t's local date.
@@ -378,6 +371,7 @@ type minute struct {
 	charge                    float64
 	charges                   int
 	mode                      string
+	battMs                    int64
 }
 
 // modeRank orders work modes by how much they matter in a minute's summary:
@@ -417,14 +411,22 @@ func (m *minute) reading() Reading {
 		c := round(m.charge / float64(m.charges))
 		r.Charge = &c
 	}
+	r.BattS = min(int((m.battMs+500)/1000), 60)
 	return r
 }
 
 func round(v float64) float64 { return math.Round(v*10) / 10 }
 
+// maxBattStep is the most time on battery one sample adds, in ms: a gap in
+// polling doesn't count.
+const maxBattStep = 5_000
+
 // Minutes turns samples into per-minute readings the way the logbook does,
 // for others that need them (Publish mode sends them to the server).
-type Minutes struct{ acc minute }
+type Minutes struct {
+	acc  minute
+	last int64 // the previous sample's time, Unix ms
+}
 
 // Add takes a sample. When it starts a new minute, it returns the finished one.
 func (m *Minutes) Add(s monitor.Sample, mode string) (Reading, bool) {
@@ -432,12 +434,27 @@ func (m *Minutes) Add(s monitor.Sample, mode string) (Reading, bool) {
 	var done Reading
 	ok := m.acc.n > 0 && m.acc.start != start
 	if ok {
-		done = m.acc.reading()
-		m.acc = minute{}
+		done, _ = m.flush()
 	}
 	if m.acc.n == 0 {
 		m.acc.start = start
 	}
+	// Time on battery, as the ESP32 counts it: the time since the previous
+	// sample, when this one is in battery or test mode.
+	if m.last > 0 && (mode == "battery" || mode == "test") {
+		m.acc.battMs += min(max(s.T-m.last, 0), maxBattStep)
+	}
+	m.last = s.T
 	m.acc.add(s, mode)
 	return done, ok
+}
+
+// flush ends the minute in progress, if there is one.
+func (m *Minutes) flush() (Reading, bool) {
+	if m.acc.n == 0 {
+		return Reading{}, false
+	}
+	r := m.acc.reading()
+	m.acc = minute{}
+	return r, true
 }

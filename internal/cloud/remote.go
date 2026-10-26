@@ -47,9 +47,10 @@ type Remote struct {
 	snap      monitor.Snapshot
 	history   []monitor.Sample
 	events    []monitor.Event
-	remote    *settings.Settings // the UPS's settings on the server
-	online    bool               // the UPS is sending to the server
-	reachable bool               // the server answers
+	remote    *settings.Settings  // the UPS's settings on the server
+	lastTest  *monitor.TestResult // the latest self-test, from the server's battery health
+	online    bool                // the UPS is sending to the server
+	reachable bool                // the server answers
 	problem   string
 	lostAt    time.Time // when the UPS went out of sight
 	lostNoted bool
@@ -74,20 +75,22 @@ func NewRemote(cfg Config, store *settings.Store, actions monitor.Actions, versi
 // The server's GET .../state and its stream's updates: PowerPilot's own
 // types, plus whether the UPS is online.
 type serverState struct {
-	Device   monitor.Device    `json:"device"`
-	Snapshot monitor.Snapshot  `json:"snapshot"`
-	History  []monitor.Sample  `json:"history"`
-	Events   []monitor.Event   `json:"events"`
-	Settings settings.Settings `json:"settings"`
-	Online   bool              `json:"online"`
+	Device   monitor.Device      `json:"device"`
+	Snapshot monitor.Snapshot    `json:"snapshot"`
+	History  []monitor.Sample    `json:"history"`
+	Events   []monitor.Event     `json:"events"`
+	Settings settings.Settings   `json:"settings"`
+	LastTest *monitor.TestResult `json:"last_test"`
+	Online   bool                `json:"online"`
 }
 
 type serverUpdate struct {
-	Snapshot monitor.Snapshot   `json:"snapshot"`
-	Sample   *monitor.Sample    `json:"sample"`
-	Events   []monitor.Event    `json:"events"`
-	Settings *settings.Settings `json:"settings"`
-	Online   bool               `json:"online"`
+	Snapshot monitor.Snapshot    `json:"snapshot"`
+	Sample   *monitor.Sample     `json:"sample"`
+	Events   []monitor.Event     `json:"events"`
+	Settings *settings.Settings  `json:"settings"`
+	LastTest *monitor.TestResult `json:"last_test"` // only when a self-test ends
+	Online   bool                `json:"online"`
 }
 
 // Run follows the server until done is closed, reconnecting as needed.
@@ -128,7 +131,7 @@ func (r *Remote) load(st serverState) {
 	if !r.reachable {
 		r.log.Info("following the UPS on the server", "device", r.c.device, "server", r.host)
 	}
-	r.device, r.snap, r.history, r.online = st.Device, st.Snapshot, st.History, st.Online
+	r.device, r.snap, r.history, r.lastTest, r.online = st.Device, st.Snapshot, st.History, st.LastTest, st.Online
 	r.events = append(st.Events, r.localSince(st.Events)...)
 	s := st.Settings
 	r.remote = &s
@@ -176,6 +179,9 @@ func (r *Remote) apply(u serverUpdate) {
 	if u.Settings != nil {
 		s := *u.Settings
 		r.remote = &s
+	}
+	if u.LastTest != nil {
+		r.lastTest = u.LastTest
 	}
 	r.checkLocked(now)
 	r.broadcastLocked(u.Sample, u.Events, u.Settings != nil)
@@ -351,7 +357,7 @@ func (r *Remote) settingsLocked() settings.Settings {
 }
 
 func (r *Remote) broadcastLocked(sample *monitor.Sample, events []monitor.Event, withSettings bool) {
-	u := monitor.Update{Snapshot: r.shownLocked(), Sample: sample, Events: events}
+	u := monitor.Update{Snapshot: r.shownLocked(), Sample: sample, Events: events, LastTest: r.lastTest}
 	if withSettings {
 		s := r.settingsLocked()
 		u.Settings = &s
@@ -395,6 +401,7 @@ func (r *Remote) State() monitor.State {
 		History:    append([]monitor.Sample(nil), r.history...),
 		Events:     append([]monitor.Event(nil), r.events...),
 		Settings:   r.settingsLocked(),
+		LastTest:   r.lastTest,
 		IntervalMS: 5000,
 	}
 }
@@ -480,6 +487,30 @@ func (r *Remote) Note(level, msg string) {
 	r.mu.Lock()
 	r.addLocalLocked(monitor.KindInfo, level, msg)
 	r.mu.Unlock()
+}
+
+// Battery relays the dashboard's battery health requests (web.Battery) to the
+// server's routes for this UPS: path is /battery or /battery/replaced. The
+// server works it out from the UPS's readings (PowerPilotHardware
+// docs/cloud.md, "Battery health"); bodies and replies pass through.
+func (r *Remote) Battery(ctx context.Context, method, path string, body []byte) (int, []byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	status, reply, err := r.c.relay(ctx, method, r.c.devicePath(path), body)
+	if err != nil || status < 300 {
+		return status, reply, err
+	}
+	var e struct {
+		Error string `json:"error"`
+	}
+	switch {
+	case json.Unmarshal(reply, &e) == nil && e.Error != "":
+		return status, reply, nil // the server's own words, such as an invalid date
+	case status == http.StatusNotFound:
+		// A server from before battery health answers its unknown routes with a bare 404.
+		return 0, nil, errors.New("this server doesn't work out battery health yet: update powerpilot-server")
+	}
+	return 0, nil, fmt.Errorf("the server answered %d %s", status, http.StatusText(status))
 }
 
 // Logs are the UPS's logs on the server (web.Logs).

@@ -315,6 +315,25 @@ func (c *client) do(ctx context.Context, method, path string, body, out any) err
 	}
 }
 
+// relay sends a JSON body as it is and returns the server's answer as it is.
+func (c *client) relay(ctx context.Context, method, path string, body []byte) (int, []byte, error) {
+	var b any
+	if body != nil {
+		b = json.RawMessage(body)
+	}
+	req, err := c.request(ctx, method, path, b)
+	if err != nil {
+		return 0, nil, err
+	}
+	res, err := c.http.Do(req)
+	if err != nil {
+		return 0, nil, fmt.Errorf("can't reach the server: %w", errors.Unwrap(err))
+	}
+	defer res.Body.Close()
+	reply, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	return res.StatusCode, reply, err
+}
+
 // stream reads a server-sent event stream, calling fn for each message,
 // until it ends. The server pings every 25 s, so a minute of silence means
 // the connection is dead.

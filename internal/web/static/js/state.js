@@ -22,8 +22,9 @@ export function emptyState() {
     battery: {
       percent: null, voltage: null, nominalVoltage: null,
       state: 'unknown', // charging | discharging | full | low | unknown
-      health: 'unknown', // good | replace | testing | unknown
+      health: 'unknown', // good | check | replace | testing | unknown
       runtimeMinutes: null, lowThreshold: 20, lastTest: null, testRunning: false,
+      report: null, // powerpilot-server's battery health, once loaded (GET /api/battery)
     },
     temperature: null, // °C; null when the UPS doesn't report it
     fanSpeed: null, // RPM
@@ -55,13 +56,16 @@ export function deriveAlarm({ onBattery, batteryLow, fault, overload, enabled, m
   return { enabled, muted, active: level !== 'none', level, message };
 }
 
-function healthFrom(lastTest) {
+/** The Health badge: the server's verdict once its report is loaded, else the last self-test. */
+export function healthFrom(lastTest, report, testRunning = false) {
+  if (testRunning || (lastTest && lastTest.result === 'running')) return 'testing';
+  if (report) return ['good', 'check', 'replace'].includes(report.health) ? report.health : 'unknown';
   if (!lastTest) return 'unknown';
-  return { passed: 'good', failed: 'replace', running: 'testing' }[lastTest.result] || 'unknown';
+  return { passed: 'good', failed: 'replace' }[lastTest.result] || 'unknown';
 }
 
 /** Maps the Go service's /api/state (or a stream update) to the UPS state. */
-export function fromLive(device, snap, settings, lastTest) {
+export function fromLive(device, snap, settings, lastTest, report = null) {
   const s = emptyState();
   const st = snap && snap.connected ? snap.status : null;
   const r = snap && snap.ratings;
@@ -78,7 +82,8 @@ export function fromLive(device, snap, settings, lastTest) {
   s.updatedAt = snap && snap.updated_at && !snap.updated_at.startsWith('0001') ? new Date(snap.updated_at) : null;
   s.battery.lowThreshold = settings ? settings.low_battery_percent : 20;
   s.battery.lastTest = lastTest || null;
-  s.battery.health = healthFrom(lastTest);
+  s.battery.report = report;
+  s.battery.health = healthFrom(lastTest, report, !!(st && st.test_running));
   if (!st) {
     s.error = (snap && snap.error) || '';
     return s;

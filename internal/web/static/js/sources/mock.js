@@ -1,11 +1,12 @@
 // Mock data source: a simulated UPS with the same interface as the live source.
 // Open the dashboard with ?source=mock (optionally &scenario=ac|battery|bypass|fault).
 // By default it cycles through mains, a 50-second outage and recovery.
-import { deriveAlarm, emptyState, statusLabel } from '../state.js';
+import { deriveAlarm, emptyState, healthFrom, statusLabel } from '../state.js';
 
 const RATED_W = 1200;
 const PACK_V = 24;
 const BATTERY_AH = 9;
+const DAY = 86400e3;
 
 // Same Peukert estimate the service uses, so both sources look alike.
 function runtime(chargePct, loadW, ah = BATTERY_AH) {
@@ -27,6 +28,43 @@ export function createMockSource({ scenario = 'cycle', interval = 2000 } = {}) {
     mode: null, alarmLevel: 'none', lowNotified: false, lastTest: null,
     settings: { low_battery_percent: 20, notify: true, shutdown_mac: false, shutdown_after_minutes: 5, battery_ah: BATTERY_AH, log_retention_days: 90 },
   };
+  // Battery health as powerpilot-server reports it, with the mobile demo's numbers.
+  const battery = { installed: new Date(Date.now() - 1170 * DAY).toISOString().slice(0, 10), autoTest: true, replacedAt: null, report: null };
+
+  function batteryReport() {
+    const now = Date.now();
+    const ageDays = battery.installed ? Math.max(0, Math.floor((now - new Date(`${battery.installed}T00:00`)) / DAY)) : undefined;
+    const known = { installed: battery.installed || undefined, age_days: ageDays, battery_ah: sim.settings.battery_ah, auto_test: battery.autoTest };
+    if (battery.replacedAt) {
+      return { ...known, counting_since: battery.replacedAt.toISOString(), cycles: 0, ah: 0, outages: 0, battery_seconds: 0, tests: [], health: 'unknown', reasons: ['No self-test yet.'] };
+    }
+    const test = (at, low) => ({ time: new Date(at).toISOString(), result: 'passed', seconds: 10, load: 9, volts_before: 27.1, volts_low: low });
+    const tests = [];
+    if (sim.lastTest && sim.lastTest.result === 'passed' && sim.lastTest.ended) tests.push(test(sim.lastTest.ended, 25.3));
+    for (const [ago, low] of [[5, 25.3], [35, 25.5], [65, 25.6], [95, 25.8], [125, 25.8], [155, 25.9]]) tests.push(test(now - ago * DAY, low));
+    const baseline = tests[tests.length - 1];
+    const drop = (t) => (t.volts_before - t.volts_low).toFixed(1);
+    return {
+      ...known, counting_since: new Date(now - 160 * DAY).toISOString(),
+      cycles: 1.32, ah: 1.32 * sim.settings.battery_ah, outages: 4, battery_seconds: 3720,
+      deepest_charge: 62, deepest_at: new Date(now - 40 * DAY).toISOString(),
+      baseline, tests, health: 'check',
+      reasons: [
+        `The voltage drop during a self-test has grown from ${drop(baseline)} V to ${drop(tests[0])} V.`,
+        ...(ageDays >= 1095 ? [`The battery is ${(ageDays / 365).toFixed(1)} years old.`] : []),
+      ],
+    };
+  }
+
+  async function reportBattery(change) {
+    if (change) {
+      await new Promise((r) => setTimeout(r, 250));
+      change();
+    }
+    battery.report = batteryReport();
+    step();
+    return battery.report;
+  }
 
   function event(kind, level, message) {
     on.events([{ time: new Date(), kind, level, message }]);
@@ -62,6 +100,7 @@ export function createMockSource({ scenario = 'cycle', interval = 2000 } = {}) {
         sim.testLeft = 0;
         sim.lastTest = { ...sim.lastTest, result: 'passed', ended: new Date().toISOString() };
         event('self_test', 'good', 'UPS self-test completed (passed)');
+        if (battery.report) battery.report = batteryReport();
       }
     }
 
@@ -130,9 +169,10 @@ export function createMockSource({ scenario = 'cycle', interval = 2000 } = {}) {
     s.battery = {
       percent: sim.battery, voltage: 21 + sim.battery * 0.055, nominalVoltage: PACK_V,
       state: low ? 'low' : mode === 'battery' || mode === 'test' ? 'discharging' : charging ? 'charging' : 'full',
-      health: sim.lastTest && sim.lastTest.result === 'passed' ? 'good' : sim.testLeft > 0 ? 'testing' : 'unknown',
+      health: healthFrom(sim.lastTest, battery.report, sim.testLeft > 0),
       runtimeMinutes: runtime(sim.battery, Math.max(watts, 12), sim.settings.battery_ah),
       lowThreshold: sim.settings.low_battery_percent, lastTest: sim.lastTest, testRunning: sim.testLeft > 0,
+      report: battery.report,
     };
     s.temperature = sim.temp;
     s.fanSpeed = sim.fan;
@@ -202,6 +242,7 @@ export function createMockSource({ scenario = 'cycle', interval = 2000 } = {}) {
       on.history(seedHistory());
       on.events([{ time: new Date(), kind: 'connection', level: 'good', message: 'Connected to the mock UPS' }], { replace: true });
       on.link(true);
+      battery.report = batteryReport();
       step();
       setInterval(step, interval);
     },
@@ -219,6 +260,17 @@ export function createMockSource({ scenario = 'cycle', interval = 2000 } = {}) {
     },
     async refresh() {
       step();
+    },
+    battery: {
+      load: () => reportBattery(),
+      save: (body) => reportBattery(() => {
+        battery.installed = body.installed || '';
+        battery.autoTest = !!body.auto_test;
+      }),
+      replaced: (installed) => reportBattery(() => {
+        battery.installed = installed;
+        battery.replacedAt = new Date();
+      }),
     },
   };
 }

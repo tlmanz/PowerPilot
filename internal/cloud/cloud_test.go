@@ -93,7 +93,7 @@ func fakeServer(t *testing.T, stream func(w http.ResponseWriter, flush func())) 
 		fmt.Fprint(w, `{"device":{"brand":"Prolink","model":"PRO2000SFCU","app_version":"esp32-0.1.0"},
 			"snapshot":{"connected":true,"mode":"line","battery_state":"full","status":{"on_battery":false}},
 			"history":null,"events":null,"settings":{"low_battery_percent":20,"notify":true,"shutdown_after_minutes":5,"battery_ah":18,"log_retention_days":90},
-			"last_test":null,"interval_ms":5000,"online":true}`)
+			"last_test":{"kind":"test","started":"2026-10-20T10:00:00Z","ended":"2026-10-20T10:00:10Z","result":"passed"},"interval_ms":5000,"online":true}`)
 	}))
 	mux.HandleFunc("GET /api/devices/home/stream", auth(func(w http.ResponseWriter, r *http.Request) {
 		f := w.(http.Flusher)
@@ -166,6 +166,57 @@ func TestRemoteNotifiesAndShutsDown(t *testing.T) {
 	}
 	if _, err := r.Execute("shutdown", ups.Params{Minutes: 30}); !errors.Is(err, ups.ErrInvalidCommand) {
 		t.Fatalf("bad command: %v", err)
+	}
+}
+
+// Remote mode passes on the server's last self-test: from its state, then
+// from the stream when one ends, and keeps it through later updates.
+func TestRemoteLastTest(t *testing.T) {
+	ended := time.Now().UTC().Truncate(time.Second)
+	at := ended.Format(time.RFC3339)
+	srv := fakeServer(t, func(w http.ResponseWriter, flush func()) {
+		fmt.Fprintf(w, `data: {"snapshot":{"connected":true,"mode":"line","status":{}},"events":[{"id":"e2","time":%q,"kind":"self_test","level":"alert","message":"UPS self-test failed","test":{"result":"failed","seconds":6,"load":9,"volts_before":27.1,"volts_low":22.8}}],"last_test":{"kind":"test","started":%q,"ended":%q,"result":"failed"},"online":true}`+"\n\n", at, at, at)
+		fmt.Fprint(w, `data: {"snapshot":{"connected":true,"mode":"line","status":{}},"online":true}`+"\n\n")
+		flush()
+	})
+	r := NewRemote(Config{URL: srv.URL, Device: "home", Token: "pp_t"}, newStore(t, nil), monitor.Actions{}, "v9", quiet)
+	updates, stop := r.Subscribe()
+	defer stop()
+	done := make(chan struct{})
+	defer close(done)
+	go r.Run(done)
+
+	var results []string
+	for timeout := time.After(5 * time.Second); len(results) < 3; {
+		select {
+		case u := <-updates:
+			if u.LastTest == nil {
+				t.Fatalf("an update without last_test after %v", results)
+			}
+			results = append(results, u.LastTest.Result)
+		case <-timeout:
+			t.Fatalf("updates' last_test: %v", results)
+		}
+	}
+	if strings.Join(results, ",") != "passed,failed,failed" {
+		t.Fatalf("updates' last_test: %v", results)
+	}
+	st := r.State()
+	if lt := st.LastTest; lt == nil || lt.Result != "failed" || lt.Ended == nil || !lt.Ended.Equal(ended) {
+		t.Fatalf("state's last_test %+v", lt)
+	}
+	if e := st.Events[len(st.Events)-1]; e.Test == nil || e.Test.VoltsLow != 22.8 {
+		t.Fatalf("the self-test's event lost its measurements: %+v", e)
+	}
+}
+
+// A server from before battery health has no routes for it.
+func TestRemoteBatteryOldServer(t *testing.T) {
+	srv := fakeServer(t, func(http.ResponseWriter, func()) {})
+	r := NewRemote(Config{URL: srv.URL, Device: "home", Token: "pp_t"}, newStore(t, nil), monitor.Actions{}, "v9", quiet)
+	_, _, err := r.Battery(context.Background(), http.MethodGet, "/battery", nil)
+	if err == nil || err.Error() != "this server doesn't work out battery health yet: update powerpilot-server" {
+		t.Fatalf("old server: %v", err)
 	}
 }
 
@@ -278,8 +329,13 @@ func TestPublisher(t *testing.T) {
 	p := NewPublisher(Config{URL: srv.URL, Device: "desk", Token: "pp_t"}, newStore(t, nil), monitor.Device{Brand: "Prolink"}, quiet)
 	p.Attach(mon)
 	p.Event(monitor.Event{Time: time.Now(), Kind: "utility_lost", Level: "alert", Message: "Utility power lost"})
+	// Battery health's two facts go up as the monitor and the logbook make them.
+	p.Event(monitor.Event{Time: time.Now(), Kind: "self_test", Level: "good", Message: "UPS self-test completed (passed)",
+		Test: &monitor.SelfTest{Result: "passed", Seconds: 10, Load: 9, VoltsBefore: 27.1, VoltsLow: 25.9}})
 	base := time.Now().Truncate(time.Minute).Add(-2 * time.Minute).UnixMilli()
 	p.Sample(monitor.Sample{T: base, In: 230}, "line")
+	p.Sample(monitor.Sample{T: base + 2000, In: 0}, "battery")
+	p.Sample(monitor.Sample{T: base + 4000, In: 0}, "battery")
 	p.Sample(monitor.Sample{T: base + 60_000, In: 231}, "line") // starts the next minute: the first is done
 	mon.updates <- monitor.Update{Snapshot: monitor.Snapshot{Connected: true, Mode: "line", BatteryState: "full"}}
 	done := make(chan struct{})
@@ -302,8 +358,13 @@ func TestPublisher(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if ev := got["POST /api/publish/desk/events"][0]; !strings.Contains(ev, `"id":"desk-`) || !strings.Contains(ev, "utility_lost") {
+	if ev := got["POST /api/publish/desk/events"][0]; !strings.Contains(ev, `"id":"desk-`) || !strings.Contains(ev, "utility_lost") ||
+		!strings.Contains(ev, `"message":"UPS self-test completed (passed)","test":{"result":"passed","seconds":10,"load":9,"volts_before":27.1,"volts_low":25.9}}`) ||
+		strings.Count(ev, `"test":`) != 1 {
 		t.Fatalf("events %s", ev)
+	}
+	if rd := got["POST /api/publish/desk/readings"][0]; !strings.Contains(rd, `"mode":"battery"`) || !strings.Contains(rd, `"batt_s":4}`) {
+		t.Fatalf("readings %s", rd)
 	}
 	res := strings.Join(got["POST /api/publish/desk/results"], "\n")
 	if !strings.Contains(res, `{"cmd_id":"c1","status":"done","raw":"Q"}`) || !strings.Contains(res, `"cmd_id":"c2","status":"expired"`) {

@@ -73,7 +73,8 @@ export function updateBattery(battery, state = {}) {
   $('bt-state-icon').dataset.state = battery.state;
   setText('bt-volt', battery.voltage != null ? `${num(battery.voltage, 1)} V${battery.nominalVoltage ? ` of ${num(battery.nominalVoltage)} V` : ''}` : '—');
   const health = {
-    good: ['good', 'Good'], replace: ['bad', 'Replace soon'], testing: ['info', 'Testing…'], unknown: ['muted', 'Run a self-test'],
+    good: ['good', 'Good'], check: ['warn', 'Check soon'], replace: ['bad', 'Replace soon'],
+    testing: ['info', 'Testing…'], unknown: ['muted', 'Run a self-test'],
   }[battery.health] || ['muted', 'Unknown'];
   badge($('bt-health'), health[0], health[1]);
   setText('bt-runtime', on ? duration(battery.runtimeMinutes) : '—');

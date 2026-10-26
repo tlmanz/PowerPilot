@@ -86,6 +86,8 @@ export function clock(d, secs = false) {
   return `${h % 12 || 12}:${pad(d.getMinutes())}${secs ? ':' + pad(d.getSeconds()) : ''} ${h >= 12 ? 'PM' : 'AM'}`;
 }
 export const dateTime = (d, secs = false) => `${date(d)} ${clock(d, secs)}`;
+/** A local day as the APIs take it: 2026-10-26. */
+export const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 export const sameDay = (a, b) => a.toDateString() === b.toDateString();
 
 export function duration(min) {
